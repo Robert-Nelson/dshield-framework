@@ -1,0 +1,210 @@
+# Checkpoint Firewall-1 4.1 SP5 parser
+# (based on Checkpoint FW-1 user alert parse routine by
+# Ken McKinlay <kmckinlay@home.com>)
+#
+# http://www.checkpoint.com/products/security/firewall-1.html
+#
+# Log is to be generated with "fw logexport" using the default semicolon
+# (;) for a delimiter.  You could create a script that cron runs like
+#
+# #!/bin/sh
+#
+# /etc/fw/bin/fw logexport -n -o /root/dshield/fw1.log
+# /etc/fw/bin/fw logswitch
+# /root/dshield/fw_41.pl
+#
+# would export the FW-1 log to /root/dshield/fw.log and then rotate the
+# FW-1 logs, and then run /root/dshield/fw_41.pl
+#
+# Probably you want to parse only the lines that contain useful
+# information.  For instance, reporting on traffic that was allowed
+# is not particularly useful.  On a Solaris system, for example, the
+# logexport lines for the external interface are the ones you want,
+# and you'd set line_filter in the config file appropriately:
+#
+# line_filter=drop\;\;hme0
+#
+# The above would accept for parsing only lines that were to do with
+# interface 'hme0' and that were for connections that were dropped only.
+# If your FW1 system is so configured, you might also want to filter
+# based on whether the line is for an inbound or outbound packet, or
+# that were rejected, etc.  See the FW1 docs for full details.
+#
+# Because fw_41sp5.pl is normally run with no command line options,
+# you should have put dshield.cnf in /etc.  You should set
+# 'log=/root/dshield/fw1.log' in your /etc/dshield.cnf file.
+# However, I run from crontab every midnight using this script:
+#
+# #!/bin/ksh
+# 
+# FWDIR=/opt/CPfw1-41; export FWDIR
+# 
+# cd $FWDIR/log
+# 
+# $FWDIR/bin/fw logswitch
+# logname=`/bin/date "+%d%b%Y"`
+# logname=`/bin/ls ${logname}*.log`
+# 
+# $FWDIR/bin/fw logexport -n -i $logname -o ${logname}export
+# 
+# LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib:/usr/lib:/lib
+# export LD_LIBRARY_PATH
+# 
+# /var/downloads/dshield/fw1_41sp5/fw1_41sp5.pl \
+# -log=${logname}export \
+# -config=/var/downloads/dshield/fw1_41sp5/dshield.cnf \
+# -whereto=MAIL
+#-- end of script
+#
+# See the FW-1 documentation for more on logexport and logswitch.
+#
+my $PARSER_VERSION = "2002-05-14";
+
+#
+#  Checkpoint FW-1 User Alert Parser
+#    parser for user alert output from Checkpoint FW-1
+#
+
+#
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regex that each line must match.  
+# $line_exclude Regex for lines we want to exclude.
+
+sub parse {
+    my $line = shift;
+
+	# Is this any kind of packet filter log line?
+	if ($line_filter) { return 0 unless ( $line =~ /$line_filter/ ) }
+
+	# Or maybe something undesirable that we don't want to see?
+	if ($line_exclude) { return 0 if ( $line =~ /$line_exclude/ ) }
+
+	# Default
+    return 0 unless ( $line =~ /drop/ || $line =~ /reject/ );
+
+    my $count = 1;
+    my ($day,$wmon,$year,$hour,$minute,$second,$action,$firewall,$interface,$alert);
+    my ($protocol,$ipSource,$ipDestin,$portDestin,$portSource);
+    my ($month,$lprotocol);
+    my @rline;
+
+    #print "PARSING: $line" if ($verbose eq 'Y');
+    return 0 unless ( $line =~ /drop/ );
+
+# sample:
+#0   1    2    3    4    5      6     7        8       9     10  11  12
+#num;date;time;orig;type;action;alert;i/f_name;i/f_dir;proto;src;dst;rule;
+#13        14        15       16       17      18     19  20
+#icmp-type;icmp-code;xlatesrc;xlatedst;service;s_port;len;xlatesport;
+#21         22    23        24      25   26 27     28      29   30
+#xlatedport;agent;orig_from;orig_to;from;to;reason;reason:;user;res_action;
+#31       32                  33       34              35
+#resource;error notification:;IKE Log:;Negotiation Id:;sys_msgs
+# dropped TCP sample:
+#0 1         2        3            4   5   6 7    8       9
+#7;13May2002; 0:00:10;192.168.1.37;log;drop;;hme0;inbound;tcp;
+#10           11              12     17   18   19
+#61.136.92.98;192.188.155.107;50;;;;;http;3756;48;;;;;;;;;;;;;;;;
+# dropped ICMP sample:
+#0     1         2        3            4   5   6 7    8       9
+#18363;13May2002; 3:56:57;192.168.1.37;log;drop;;hme0;inbound;icmp;
+#10           11             12 131415           16
+#66.197.239.2;192.188.155.64;50;4;0;66.197.239.2;161.98.251.39;;;;;;;;;;;;;;;;;;;
+
+
+#  old sample:
+# 0   1    2    3    4     5      6      7       8       9   10   11   12
+#num;date;time;orig;type;action;alert;i/f_name;i/f_dir;proto;src;dst;service;
+#  13   14   15   16      17          18      19      20         21     
+#s_port;len;rule;reason:;icmp-type;icmp-code;xlatesrc;xlatedst;xlatesport;
+#  22         23
+#xlatedport;sys_msgs
+#0   1           2        3          4   5  6  7    8      9
+#1;27Dec2001; 1:00:03;172.16.100.50;log;drop;;eth1;inbound;udp;
+#   10            11          12  13   14 15
+#10.5.34.169;255.255.255.255;2301;2301;40;8;;;;;;;;
+
+	my @p = split (";", $line);
+	if ( $#p < 12 ) { return 0; }
+	if ( ! $p[1] ) { return 0; }
+
+	($day,$wmon,$year) = ($p[1] =~ m/^\s*(\d+)(\D+)(\d+)/ );
+	($hour,$minute,$second) = split(":", $p[2]);
+
+    # convert the $wmon to a numeric value
+    $month=$Month{$wmon};
+
+	$ipSource = $p[10];
+	$ipDestin = $p[11];
+	$count="1";
+	$flags = "";	# Alas
+
+    # force $protocol to uppercase
+	$protocol = uc $p[9];	
+
+    # also have protocol in lowercase for getservbyname routines
+    $lprotocol=lc $protocol;
+
+    # Treat ICMP differently
+    if ( $protocol eq "ICMP" ) {
+		$portSource= $p[13];	# Type
+		$portDestin= $p[14];	# Code
+	} else {
+		if ($p[17] eq "bootpc" ) { $p[17] = "68"; }
+		if ($p[18] eq "bootpc" ) { $p[18] = "68"; }
+		if ($p[17] eq "bootp" ) { $p[17] = "67"; }
+		if ($p[18] eq "bootp" ) { $p[18] = "67"; }
+
+		$portSource = $p[18];
+		$portDestin = $p[17];  # Maybe
+		
+	    # convert $portSource and $portDestin to numeric, if needed
+    	if ( $portSource !~ /^\d+$/ ) {
+			$portSource = scalar getservbyname $portSource,$lprotocol;
+	    }
+    	if ( $portDestin !~ /^\d+$/ ) {
+			$portDestin = scalar getservbyname $portDestin,$lprotocol;
+	    }
+	}
+	if ( $portSource !~ /^\d+$/ ) {
+		$portSource = "???";
+	}
+    if ( $portDestin !~ /^\d+$/ ) {
+		$portDestin = "???";
+	}
+
+    # get the host IP address
+#    $ipSource=join (".",unpack 'C4',scalar gethostbyname $ipSource);
+#    $ipDestin=join (".",unpack 'C4',scalar gethostbyname $ipDestin);
+
+    $rline[0]=sprintf("%0.4d-%0.2d-%0.2d %0.2d:%0.2d:%0.2d %s",$year,$month,$day,$hour,$minute,$second,$tz);
+    $rline[1]=$userid;
+    $rline[2]=$count;
+    $rline[3]=$ipSource;
+    $rline[4]=$portSource;
+    $rline[5]=$ipDestin;
+    $rline[6]=$portDestin;
+    $rline[7]=$protocol;
+    $rline[8]=$flags;
+
+    return @rline;
+}

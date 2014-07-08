@@ -1,0 +1,113 @@
+# DShield iptables parser
+#
+# iptables defaults to saving logs in /var/logs/messages, so set
+# 'log=/var/log/messages' in dshield.cnf.
+#
+# The parser defaults to only processing lines that contain 'kernel:'
+# If this isn't correct for you, then set the 'line_filter' variable in 
+# dshield.cnf so it is a string that is contained in the log lines
+# that the parser should process.
+#
+my $PARSER_VERSION = "2002-03-28";
+
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regex that each line must match.  
+# $line_exclude Regex for lines we want to exclude.
+# $reason_skipped  You fill this with the reason the line wasn't parsed.
+
+sub parse {
+	my $line=shift;
+	my @rline;
+	my (%param, $name, $value);
+	my ($srcpt, $dstpt);
+	my $flags="";
+
+	#print "$line\n" if ($verbose eq 'Y'); 
+	$reason_skipped = "Does not contain 'kernel:'"; return 0 unless ( $line =~ /kernel:/ );
+
+	# Is this any kind of packet filter log line?
+	if ($line_filter) { 
+		$reason_skipped = "Does not contain '$line_filter'"; return 0 unless ( $line =~ /$line_filter/ ) 
+	}
+
+	# Or maybe it has something undesirable that we don't want to see?
+	if ($line_exclude) { $reason_skipped = "Contains `$line_exclude`"; return 0 if ( $line =~ /$line_exclude/ ) }
+
+	my @fields=split(' ', $line);
+
+	# First do date/time
+	my $month=$fields[0];
+	my $day=$fields[1];
+	my $time=$fields[2];
+	$month=$Month{$month};
+
+	# iptables log does not have the year.  So we take a guess at it.
+	# Lets hope that we are't processing more than one year.  :-(
+	if ($month <= $this_month) { 
+		$year = $this_year;
+	} else {
+		$year = $this_year - 1;
+	}
+	my $date=sprintf("%0.4d-%0.2d-%0.2d %s %s",$year,$month,$day,$time,$tz);
+
+	# Put the rest of the fields in a hash
+	foreach ( @fields ) {
+		($name,$value)=split("=");
+		$param{$name}=$value;
+		$param{$name}='1' if ($param{'PROTO'} eq 'TCP' && ( ($name eq 'SYN') || ($name eq 'ACK') )); 
+	}
+
+	if ( $param{"PROTO"} eq "TCP" ) {
+		$flags .= "R" if ( $param{"RES"} ne '0x00' ); 
+		$flags .= "U" if ( $param{"URGP"} ne '0' );
+		$flags .= "S" if ( $param{"SYN"} );
+		$flags .= "A" if ( $param{"ACK"} );
+	}
+
+    if ( $param{"PROTO"} eq "ICMP" ) {
+		$srcpt = $param{"TYPE"};
+		$dstpt = $param{"CODE"};
+    } else {
+		$srcpt = $param{"SPT"};
+		$dstpt = $param{"DPT"};
+    }
+
+    # Only fill the output fields if we are valid.
+    if ( $date && $param{"SRC"} && ($srcpt ne '') && $param{"DST"} && ($dstpt ne '') && ($param{"PROTO"} ne '')  ) { 
+     
+		$rline[0] = $date;
+		$rline[1] = $userid;
+		$rline[2] = "1";
+		$rline[3] = $param{'SRC'};
+		$rline[4] = $srcpt;
+		$rline[5] = $param{'DST'};
+		$rline[6] = $dstpt;
+		$rline[7] = $param{'PROTO'};
+		$rline[8] = $flags;
+   } else {
+		$reason_skipped = "Failed to parse";
+		return 0;
+   }
+
+    $_=$x;
+    return @rline;
+}

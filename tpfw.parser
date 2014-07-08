@@ -1,0 +1,145 @@
+# DShield Unix syslog Tiny Personal Firewall parser
+#
+# Based on the Dshield IPCHAINS parser version 2001-12-18
+#
+#  Written by Tim Rushing (send comments and bug reports to dshield@threenorth.com)  
+#
+# Tiny Personal Firewall for Windows machines supports remote logging
+# to syslog facilities.  However, the logs will not contain a target ip address. See
+# IMPORTANT NOTE below for required changes to the dshield.cnf to enable this script
+# work.
+#
+# Unfortunately, the logs are not easily parseable.  Fields are not consistent.
+# I've written the regex to deal with log lines pertaining to tcp, udp and icmp like 
+# below.  It should properly handle instances where TPFW has not looked up an ip address
+# into a fully qualified domain, instances where it has and instances where it has been
+# told not to do so. This may well fail for other format.
+#
+#   Feb 25 13:10:21 samantha Rule 'block all': Blocked: In UDP, SNODGRASS [10.168.1.3:6001]->localhost:6001, Owner: no owner
+#   Feb 25 15:05:18 host1 Rule 'chris': Blocked: In TCP, 10.109.162.195:64981->localhost:45696, Owner: no owner
+#   Feb 26 11:50:49 samantha Rule 'Packet to unopened port received': Blocked: In TCP, AC8CEAB7.ipt.foo.com [10.140.234.183:4663]->localhost:27374, Owner: no owner
+#   Feb 26 14:34:07 host1 Rule 'block all': Blocked: In ICMP [8] Echo Request, 10.15.205.194->localhost, Owner: Tcpip Kernel Driver
+#   Feb 26 14:34:31 host1 Rule 'block all': Blocked: In UDP, 10.15.205.194:1041->localhost:33468, Owner: no owner
+#   Feb 26 17:40:25 samantha Rule 'Packet to unopened port received': Blocked: In TCP, 10.134.83.26:4497->localhost:80, Owner: no owner
+#   Feb 26 17:40:28 samantha Rule 'Packet to unopened port received': Blocked: In TCP, h-66-134-83-26.LSANCA54.foo.net [10.134.83.26:4497]->localhost:80, Owner: no owner
+#   Feb 27 21:34:27 host1 Rule 'block all': Blocked: In TCP, (null) [10.18.250.93:21]->localhost:21, Owner: no owner
+#   Feb 28 08:47:58 host1 Rule 'block all': Blocked: In TCP, (null) [10.78.246.135:2727]->localhost:80, Owner: no owner
+#   Feb 28 09:33:12 host1 Rule 'block all': Blocked: In ICMP [8] Echo Request, (null) [10.170.162.249]->localhost, Owner: Tcpip Kernel Driver
+#
+# IMPORTANT NOTE:  Tiny Personal Firewall does not include a target ip in its logs.
+#                  It will include the name of the machine sending the logs (samantha
+#                  and host1 in the examples above).  In order for the code to parse
+#                  properly, you must place a line in the dshield.cnf file in the following
+#                  format:
+#
+#                   hostname=ip_address
+#
+#                  e.g.
+#
+#                  samantha=192.168.1.1
+#                  host1=192.168.1.5
+#
+#                  If you do not have a fixed ip to use, then this parse script will not
+#                  be usable.
+#
+#                  If line_filter is not defined in dshield.cnf, then "Blocked: In" will be used.
+#
+#
+# KNOWN PROBLEMS: If multiple syslog entries come in with the same format except for the time,
+#                 then syslog will list them as
+#
+#                 Feb 28 12:50:43 host1 last message repeated 3 times
+#
+#                 This parser will not see those lines, so it will not always show
+#                 multiple attacks from the same ip.  (If there are any other syslog entries
+#                 that intervene, then the attacks will be fully listed and processed.)
+#
+my $PARSER_VERSION = "2002-03-02";
+
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regex that each line must match.  
+# $line_exclude Regex for lines we want to exclude.
+
+sub parse {
+    my $line=shift;
+    my @rline;
+    #print "$line\n" if ($verbose eq 'Y'); 
+
+    # Is this any kind of packet filter log line?
+    if ($line_filter) {
+	    return 0 unless ( $line =~ /$line_filter/ );
+    } else {
+	    return 0 unless ( $line =~ /Blocked: In/ );
+    }
+
+    # Or maybe something undesirable that we don't want to see?
+    if ($line_exclude) { return 0 if ( $line =~ /$line_exclude/ ) }
+
+    my ($month,$day,$time,$target,$proto,$icmptype,$source,$sourceport,$targetport);
+    my $x;
+    $x=$_;
+    $_=$line;
+
+   ($month,$day,$time,$target,$proto,$icmptype,$source,$sourceport,$targetport) =
+  /(\S+)\s+(\d+)\s+(\d\d:\d\d:\d\d)\s+(\w+) Rule '.*': Blocked: In (\S+)\s*\[*(\d+)*]*.*,.* \[*(\d+\.\d+\.\d+.\d+):*(\d+)*]*->localhost:*(\d+)*/i;
+  # month  day     time               target                       protocol   icmp_type        source_ip            source_port          targe_port                                           
+
+    # if icmp, then put type in source_port
+
+	if ($proto eq 'ICMP') {
+		$sourceport = $icmptype;
+		$targetport = '???';
+	}
+
+    # now, we need to convert the target into an ip address using values read in from cnf file
+	if ($$target) {
+		$target = $$target;
+	} else {
+		print "No ip address identified for $target in dshield.cnf file\n" if ($verbose eq 'Y'); 
+		return 0;
+	}
+
+	$month=$Month{$month};
+	if ($month <= $this_month ) {
+		$year = $this_year;
+	} else {
+		$year = $this_year - 1;
+	}
+
+	$date = sprintf("%0.4d-%0.2d-%0.2d %s %s",$year,$month,$day,$time,$tz);
+
+    if ($day && $source && $target && $proto) {     
+	$rline[0] = $date;
+	$rline[1] = $userid;
+	$rline[2] = "1";
+	$rline[3] = $source;
+	$rline[4] = $sourceport;
+	$rline[5] = $target;
+	$rline[6] = $targetport;
+	$rline[7] = $proto;
+	$rline[8] = $flags;
+    } else {
+       return 0;
+    }
+    $_=$x;
+    return @rline;
+}

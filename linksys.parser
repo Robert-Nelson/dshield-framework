@@ -1,0 +1,70 @@
+# Linksys Etherfast Roouter Parser
+#
+# You must run the "linksys" program to get the logs from the router
+# to /var/log/linksys.log  (And set 'log=/var/log/linksys.log' in dshield.cnf 
+#
+# Your Linksys router must have firmware version 1.37, or later to support
+# logging. Connect to its administration interface and go to the "log"
+# tab. Then set the IP to the IP of your Linux machine and click on "Apply."
+#
+#  1) gcc -o linksys linksys.c
+#      (Will compile linksys.c and make the executable named 'linksys')
+#  2) ./linksys &
+#      (Run it in the background and return to the command prompt.)
+#  3) add the line '(path to)/linksys &' to /etc/rc.d/rc.local (at the end)
+#     to automatically start it after a reboot.
+#     Type 'ps ax' to see if it is running.
+#
+# It should start saving logs to /var/logs/linksys.log.  If so, then good.
+# See README.txt to configure this script to send them into DShield.org
+#
+my $PARSER_VERSION = "2001-12-28";
+
+#
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regex that each line must match.  
+# $line_exclude Regex for lines we want to exclude.
+
+sub parse {
+	# This is an easy one.  linksys.c saves the log in dshield format
+	# But we want to plug in the UserID that is passed as a variable
+	# from the main part of the script.  And touch up the protocol field.
+
+    my $line = shift;
+	chomp($line);
+
+	# Is this any kind of packet filter log line?
+	if ($line_filter) { return 0 unless ( $line =~ /$line_filter/ ) }
+
+	# Or maybe something undesirable that we don't want to see?
+	if ($line_exclude) { return 0 if ( $line =~ /$line_exclude/ ) }
+
+	my @rline = split ("\t", $line);
+	if ( $#rline < 6 ) { return 0 }
+
+    $rline[1]=$userid;
+	if ( ! $rline[7] ) {
+		$rline[7] = "???";
+	}
+		
+    return @rline;
+}

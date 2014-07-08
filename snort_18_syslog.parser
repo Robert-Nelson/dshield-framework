@@ -1,0 +1,99 @@
+# Parser for snort 1.8
+# Taken from snort_18_syslog.pl
+my $PARSER_VERSION = "2002-08-22";
+
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Array of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regexp that each line must match.  
+# $line_exclude Regexp for lines we want to exclude.
+# $reason_skipped  You fill this with the reason why it wasn't parsed.
+
+sub parse {
+    my $line = shift;
+
+	# Is this any kind of packet filter log line?
+	if ($line_filter) { $reason_skipped = "Doesn't contain `$line_filter'"; return 0 unless ( $line =~ /$line_filter/ ) }
+
+	# Or maybe something undesirable that we don't want to see?
+	if ($line_exclude) { $reason_skipped = "Yech.  Contains `$line_exclude`"; return 0 if ( $line =~ /$line_exclude/ ) }
+
+    my $count = 1;
+    my $flags = "";
+    
+    my ($day,$month,$year,$hour,$minute,$second,$ipSource,$portSource,$ipDestin,$portDestin,$protocol);
+    my (@rline);
+    if ($line =~ /\{ICMP\}/ ) {
+	if ( $line=~/^([A-Z]{1}[a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}).*snort:.*\{ICMP\} ([0-9.]*) -> ([0-9.]*)$/ ) {
+	    
+	    $day=$2;
+	    $month=$Month{$1};
+	    $year=$this_year;
+	    $year-- if ($month>$this_month); 
+	    $hour=$3;
+	    $minute=$4;
+	    $second=$5;
+	    $ipSource=$6;
+	    $ipDestin=$7;
+	    
+	    $portSource=0;
+	    $portDestin=0;
+	    $protocol='ICMP';
+	    
+        } else {
+		$reason_skipped = "Failed ICMP parse";
+	    return @rline;
+        }
+    } else {
+#	if ($line=~/^([A-Z][a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}).*snort:.*\{([A-Z]+)\} ([0-9.]*):(\d+) -> ([0-9.]*):(\d+)$/) {
+	if ($line=~/^([A-Z][a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}).*snort.*:.*\{([A-Z]+)\} ([0-9.]*):(\d+) -> ([0-9.]*):(\d+)$/) {
+	    
+	    $day=$2;
+	    $month=$Month{$1};
+	    $year=$this_year;
+	    $year-- if ($month>$this_month); 
+	    $hour=$3;
+	    $minute=$4;
+	    $second=$5;
+	    $ipSource=$7;
+	    $ipDestin=$9;
+	    $portSource=$8;
+	    $portDestin=$10;
+	    $protocol=$6;
+
+        } else {
+		$reason_skipped = "Failed non-ICMP parse";
+	    return @rline;
+        }
+    }    
+
+    $rline[0]=sprintf("%0.4d-%0.2d-%0.2d %0.2d:%0.2d:%0.2d %s",$year,$month,$day,$hour,$minute,$second,$tz);
+    $rline[1]=$userid;
+    $rline[2]=$count;
+    $rline[3]=$ipSource;
+    $rline[4]=$portSource;
+    $rline[5]=$ipDestin;
+    $rline[6]=$portDestin;
+    $rline[7]=uc $protocol;
+    $rline[8]=$flags;
+#    print join('|',@rline);
+#    print "\n";
+    return @rline;
+}

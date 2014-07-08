@@ -1,0 +1,240 @@
+# Checkpoint Firewall-1 4.1 parser
+# (based on Checkpoint FW-1 user alert parse routine by
+# Ken McKinlay <kmckinlay@home.com>)
+#
+# http://www.checkpoint.com/products/security/firewall-1.html
+#
+# Log is to be generated with "fw logexport" using the default semicolon
+# (;) for a delimiter and the "-n" option to force no name lookup.
+#
+# It has been discovered that the output of "fw logexport" is not
+# always in the same format.  Two different formats have been observed
+# so far.  In each the sequence of the fields we are interested in has
+# changed.  However, the first line of the logexport file always
+# contains the layout, for example (line chopped for readability):
+#
+#num;date;time;orig;type;action;alert;i/f_name;i/f_dir;proto;src;dst;
+#service;s_port;len;rule;xlatesrc;xlatedst;xlatesport;xlatedport;
+#icmp-type;icmp-code;agent;orig_from;orig_to;from;to;reason;reason:;
+#user;res_action;resource;sys_msgs
+#
+# This parser has been rewritten so that the first line is parsed
+# to get the indexes for the fields we want, and then use those
+# for subsequent parsing.  This means that you can't have a filter
+# for line-filter or line-exclude unless those patterns allow the
+# first line through, e.g.:
+#
+# line_filter=^num|drop\;\;hme0
+#
+# Also, FW1-4.1 has a nasty habit of putting its own string-based
+# idea of what ports are source and destination, and this may not
+# match what's in /etc/services (or /etc/inet/services), so you
+# may have to modify /etc/services to include definitions for the
+# ports, for example:
+# datametrics     1645/udp        RADIUS
+# YMMV on this since many such ports are given names that are unique
+# to each installation.
+#
+# Normally you would run fw1_41.pl with no command line options,
+# so you should have put dshield.cnf in /etc.  You should set
+# 'log=/root/dshield/fw1.log' in your /etc/dshield.cnf file.
+# However, I run from crontab every midnight using this script:
+#
+# #!/bin/ksh
+# 
+# FWDIR=/opt/CPfw1-41; export FWDIR
+# DSHIELDDIR=/var/downloads/dshield; export DSHIELDDIR
+# 
+# cd $FWDIR/log
+# 
+# $FWDIR/bin/fw logswitch
+# logname=`/bin/date "+%d%b%Y"`
+# logname=`/bin/ls ${logname}*.log`
+# 
+# $FWDIR/bin/fw logexport -n -i $logname -o ${logname}export
+# 
+# LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib:/usr/lib:/lib
+# export LD_LIBRARY_PATH
+# 
+# $DSHIELDDIR/fw1_41/fw1_41.pl \
+#  -log=${logname}export \
+#  -config=$DSHIELDDIR/fw1_41sp5/dshield.cnf \
+#  -whereto=MAIL
+#-- end of script
+#
+# Note the usual warning that any option specified on the command
+# line must NOT be specified in your config file.
+#
+# See the FW-1 documentation for more on logexport and logswitch.
+#
+my $PARSER_VERSION = "2002-05-15";
+
+#
+#  Checkpoint FW1-4.1 logexport file parser
+#    parser for logexport file output from Checkpoint FW1-4.1
+#
+
+#
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regex that each line must match.  
+# $line_exclude Regex for lines we want to exclude.
+# $reason_skipped String indicating the reason a record was skipped.
+
+sub parse {
+    my $line = shift;
+
+    # Is this any kind of packet filter log line?
+    if ($line_filter) {
+	if ( $line !~ /$line_filter/ ) {
+	    $reason_skipped="Record does not pass \$line_filter.";
+	    return 0;
+	}
+    }
+
+    # Or maybe something undesirable that we don't want to see?
+    if ($line_exclude) {
+	if ( $line =~ /$line_exclude/ ) {
+	    $reason_skipped="Record matches \$line_exclude.";
+	    return 0;
+	}
+    }
+
+    # Default
+
+    my $count = 1;
+    my ($day,$wmon,$year,$hour,$minute,$second,$action,$firewall,$interface,$alert);
+    my ($protocol,$ipSource,$ipDestin,$portDestin,$portSource);
+    my ($month,$lprotocol);
+    my @rline;
+    #my ($idate,$itime,$iproto,$isrc,$idst,$iicmptype,$iicmpcode,$iservice,$isport);
+
+    #print "PARSING: $line" if ($verbose eq 'Y');
+
+
+    # It's been discovered that the format of the logexport file
+    # changes from time to time.  In order to parse the file
+    # consistently, we MUST see the first line of the logexport
+    # file, which has the layout specified.  The keywords in the
+    # layout that we are interested in are:
+    #   date
+    #   time
+    #   proto (tcp, udp, icmp)
+    #   src
+    #   dst
+    #   icmp-type
+    #   icmp-code
+    #   service
+    #   s_port
+
+    my @p = split (";", $line);
+    if ($p[0] =~ /^num/) {
+	# get the indexes of the keywords
+	for (my $i=1; $i<$#p; $i++) {
+	    if ($p[$i] =~ /^date$/) { $idate=$i; }
+	    if ($p[$i] =~ /^time$/) { $itime=$i; }
+	    if ($p[$i] =~ /^proto$/) { $iproto=$i; }
+	    if ($p[$i] =~ /^src$/) { $isrc=$i; }
+	    if ($p[$i] =~ /^dst$/) { $idst=$i; }
+	    if ($p[$i] =~ /^icmp-type$/) { $iicmptype=$i; }
+	    if ($p[$i] =~ /^icmp-code$/) { $iicmpcode=$i; }
+	    if ($p[$i] =~ /^service$/) { $iservice=$i; }
+	    if ($p[$i] =~ /^s_port$/) { $isport=$i; }
+	}
+	$reason_skipped="Layout description record processed.";
+	return 0;
+    }
+
+    if ( $line !~ /drop|reject/ ) {
+	$reason_skipped="Line is not a drop or reject record.";
+	return 0;
+    }
+		
+    if ( $#p < 12 ) {
+	$reason_skipped="Improper field count - must be at least 12.";
+	return 0;
+    }
+    if ( ! $p[1] ) {
+	$reason_skipped="Date field is null.";
+	return 0;
+    }
+
+    ($day,$wmon,$year) = ($p[$idate] =~ m/^\s*(\d+)(\D+)(\d+)/ );
+    ($hour,$minute,$second) = split(":", $p[$itime]);
+
+    # convert the $wmon to a numeric value
+    $month=$Month{$wmon};
+
+    $ipSource = $p[$isrc];
+    $ipDestin = $p[$idst];
+    $count="1";
+    $flags = "";	# Alas
+
+    # force $protocol to uppercase
+    $protocol = uc $p[$iproto];	
+
+    # also have protocol in lowercase for getservbyname routines
+    $lprotocol=lc $protocol;
+
+    # Treat ICMP differently
+    if ( $protocol eq "ICMP" ) {
+	$portSource= $p[$iicmptype];	# Type
+	$portDestin= $p[$iicmpcode];	# Code
+    } else {
+	if ($p[$iservice] eq "bootpc" ) { $p[$iservice] = "68"; }
+	if ($p[$isport] eq "bootpc" ) { $p[$isport] = "68"; }
+	if ($p[$iservice] eq "bootp" ) { $p[$iservice] = "67"; }
+	if ($p[$isport] eq "bootp" ) { $p[$isport] = "67"; }
+
+	$portSource = $p[$isport];
+	$portDestin = $p[$iservice];  # Maybe
+		
+	# convert $portSource and $portDestin to numeric, if needed
+    	if ( $portSource !~ /^\d+$/ ) {
+	    $portSource = scalar getservbyname $portSource,$lprotocol;
+	}
+    	if ( $portDestin !~ /^\d+$/ ) {
+	    $portDestin = scalar getservbyname $portDestin,$lprotocol;
+	}
+    }
+    if ( $portSource !~ /^\d+$/ ) {
+	$portSource = "???";
+    }
+    if ( $portDestin !~ /^\d+$/ ) {
+	$portDestin = "???";
+    }
+
+    # get the host IP address
+#    $ipSource=join (".",unpack 'C4',scalar gethostbyname $ipSource);
+#    $ipDestin=join (".",unpack 'C4',scalar gethostbyname $ipDestin);
+
+    $rline[0]=sprintf("%0.4d-%0.2d-%0.2d %0.2d:%0.2d:%0.2d %s",$year,$month,$day,$hour,$minute,$second,$tz);
+    $rline[1]=$userid;
+    $rline[2]=$count;
+    $rline[3]=$ipSource;
+    $rline[4]=$portSource;
+    $rline[5]=$ipDestin;
+    $rline[6]=$portDestin;
+    $rline[7]=$protocol;
+    $rline[8]=$flags;
+
+    return @rline;
+}

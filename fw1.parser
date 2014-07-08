@@ -1,0 +1,100 @@
+# Checkpoint Firewall-1 user alert parse routine by Ken McKinlay <kmckinlay@home.com>
+#
+# http://www.checkpoint.com/products/security/firewall-1.html
+#
+my $PARSER_VERSION = "2001-12-27";
+
+#
+#  Checkpoint FW-1 User Alert Parser
+#    parser for user alert output from Checkpoint FW-1
+#
+#  sample:
+# 26Jun2001  0:34:51 drop   viper      >lan1 useralert proto tcp src 62.140.64.160 dst viper service printer s_port 1927 len 60 rule 25
+#
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regex that each line must match.  
+# $line_exclude Regex for lines we want to exclude.
+
+sub parse {
+
+# Sample line
+# 26Jun2001  0:34:51 drop   viper      >lan1 useralert proto tcp src 62.140.64.160 dst viper service printer s_port 1927 len 60 rule 25
+
+    my $line = shift;
+
+	# Is this any kind of packet filter log line?
+	if ($line_filter) { return 0 unless ( $line =~ /$line_filter/ ) }
+
+	# Or maybe something undesirable that we don't want to see?
+	if ($line_exclude) { return 0 if ( $line =~ /$line_exclude/ ) }
+
+    return 0 unless ( $line =~ /^\d/ );
+
+    my $count = 1;
+    my ($day,$wmon,$year,$hour,$minute,$second,$action,$firewall,$interface,$alert);
+    my ($protocol,$ipSource,$ipDestin,$portDestin,$portSource);
+    my ($month,$lprotocol);
+    my @rline;
+
+    #print "PARSING: $line" if ($verbose eq 'Y');
+
+    ($day,$wmon,$year,$hour,$minute,$second,$action,$firewall,$interface,$alert,$protocol,$ipSource,$ipDestin,$portDestin,$portSource) = ($line =~ m/^\s*(\d+)(\D+)(\d+)\s+(\d+):(\d+):(\d+)\s+(\w+)\s+(\w+)\s+(\S+)\s+(\w+)\s+\w+\s+(\w+)\s+\w+\s+(\S+)\s+\w+\s+(\S+)\s+\w+\s+(\S+)\s+\w+\s+(\S+)/);
+
+    # convert the $wmon to a numeric value
+    $month=$Month{$wmon};
+
+    # force $protocol to uppercase
+    $protocol=uc $protocol;
+
+    # also have protocol in lowercase for get routines
+    $lprotocol=lc $protocol;
+
+    # convert $portSource and $portDestin to numeric
+    if ( $portSource !~ /^\d+$/ ) {
+       $portSource = scalar getservbyname $portSource,$lprotocol;
+    }
+    if ( $portDestin !~ /^\d+$/ ) {
+       $portDestin = scalar getservbyname $portDestin,$lprotocol;
+    }
+
+    # if ICMP, set the ports as 0 since FW1 does not give that information
+    if ( $protocol eq "ICMP" ) {
+       $portSource=0;
+       $portDestin=0;
+    }
+
+    # get the host IP address
+    $ipSource=join (".",unpack 'C4',scalar gethostbyname $ipSource);
+    $ipDestin=join (".",unpack 'C4',scalar gethostbyname $ipDestin);
+
+    $rline[0]=sprintf("%0.4d-%0.2d-%0.2d %0.2d:%0.2d:%0.2d %s",$year,$month,$day,$hour,$minute,$second,$tz);
+    $rline[1]=$userid;
+    $rline[2]=$count;
+    $rline[3]=$ipSource;
+    $rline[4]=$portSource;
+    $rline[5]=$ipDestin;
+    $rline[6]=$portDestin;
+    $rline[7]=$protocol;
+    $rline[8]=$flags;
+
+    return @rline;
+}

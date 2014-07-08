@@ -1,0 +1,58 @@
+# DShield parser for SonicWALL firewall appliances -*- mode: perl;-*-
+# 
+# In some versions of the SonicWALL firmware (2.0.1 and later) for SOHO2
+# and friends it's also possible to send out the log to syslog, instead
+# of just emailing it.
+# Under the "Log Settings" tab of the web interface configure your
+# firewall to send syslog messages to the machine of your choice, and
+# make sure that the syslog format is left at 'Default'! 
+# The firewall will then send the selected messages to the LOCAL0 
+# syslog facillity, configure your syslog.conf accordingly and list
+# the resulting file in the dshield configuration.
+#
+# The parser by default uses the time-stamp provided by the firewall, 
+# but you can change it to use the syslog one, by changing the if- 
+# statement following the TIME_STAMP_SOURCE comment
+
+my $PARSER_VERSION = "2006-08-17";
+
+sub parse {
+	my @rline;
+	shift;
+       
+	# Do we really need to parse the line include/exclude check for SonicWALL content
+	if ($line_filter) {
+            $reason_skipped = "Does not contain $line_filter"; return 0 unless ( $line =~ /$line_filter/ );
+	}
+	if ($line_exclude) { $reason_skipped = "Contains '$line_exclude'"; return 0 if ( $line =~ /$line_exclude/
+ ) }
+	unless (/ id=firewall sn=[A-Z\d]+ time/) {
+		$reason_skipped = "Does not look like a SonicWALL entry"; return 0 
+	}
+
+	# Parse log line, extract all information
+	if (/time="(\S+ \S+)" fw=.+ msg="(\w+) \w+ dropped" n=\d+ src=([\d.]+)(:(\d+):\w+)? dst=([\d.]+)(:(\d+))?/) {
+	    @rline=("$1 $tz",$userid,1,$3,$5,$6,$8,$2,'');
+
+	    # ICMP type is in src, but goes into dst, blank (and WAN missing)
+	    # if equal to zero (moronic idea, makes parsing so much more fun)
+	    if ($rline[7] eq 'ICMP') { 
+		# ICMP type from dst port
+		if ($5) { $rline[6] = $5 } else { $rline[6] = 0 }
+		# ICMP code from src port
+		if ($8) { $rline[4] = $8 } else { $rline[4] = 0 }
+	    }
+	    }
+	    else {
+		$reason_skipped = "Not a packet drop log entry"; return 0 }
+
+	    # TIME_STAMP_SOURCE
+	    # 1: use syslog date & time 
+	    # 0: use firewall date & time
+	    if (0) {
+		/^\w+\s+(\d+)\s+([\d:]+)/;
+		$rline[0]=sprintf("%s-%0.2d-%02.d %s %s",$this_year,$this_month,$1,$2,$tz);
+	    }
+
+	    return @rline
+	    }

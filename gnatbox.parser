@@ -1,0 +1,207 @@
+# Parser for Gnatbox syslogs
+#
+# by Phil Dye <phil.dye@alchemydigital.com>
+#   version $Id: gnatbox.parser,v 1.1.1.1 2003/10/09 18:26:39 jullrich Exp $
+#
+# Parses syslogs from the Global Technology Associates Gnatbox
+#  (www.gnatbox.com)
+#
+# NOTE: Because my Gnatbox has a drifting CMOS clock, the syslog timestamps
+# were wrong. To correct this, enable the "Use non-standard date format" option
+# in the Gnatbox logging config; this forces syslog to add its own timestamps.
+# This parser attempts to handle the resulting double timestamp correctly, 
+# but YMMV!
+#
+# Configuration:
+#  - Setup your Gnatbox and syslog to put just the Filter 
+#    alerts in a seperate logfile, and set the location of that logfile
+#    in your dshield.cnf
+#  - Set line_filter in your dshield.cnf to be "FILTER:".
+#
+my $PARSER_VERSION = "2002-08-20";
+
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Array of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regexp that each line must match.  
+# $line_exclude Regexp for lines we want to exclude.
+# $reason_skipped  You fill this with the reason why it wasn't parsed.
+
+sub parse {
+	my $line = shift;
+	chomp($line);
+
+	# Is this any kind of packet filter log line?
+	if ($line_filter) { $reason_skipped = "Doesn't contain `$line_filter'"; return 0 unless ( $line =~ /$line_filter/ ) }
+
+	# Or maybe something undesirable that we don't want to see?
+	if ($line_exclude) { $reason_skipped = "Yech.  Contains `$line_exclude`"; return 0 if ( $line =~ /$line_exclude/ ) }
+
+	my $count = 1;
+	my $flags = "";
+	
+	my ($day,$month,$year,$hour,$minute,$second,$ipSource,$portSource,$ipDestin,$portDestin,$protocol,$rawflags);
+	my (@rline);
+	if ($line =~ /ICMP/ ) {
+		$protocol='ICMP';
+		
+		if ($line=~/^([A-Za-z]{3})\s+(\d{1,2})\s(\d{2}):(\d{2}):(\d{2}).*Remote access filter blocks.*\[([0-9.]*)\/(\d+)\]->\[([0-9.]*)\/(\d+)\].*l=(\d+)\sf=0x(\d+).*$/) {
+		# GB3.1 format log file
+			$day=$2;
+			$month=$Month{$1};
+			$year=$this_year;
+			$year-- if ($month>$this_month); 
+			$hour=$3;
+			$minute=$4;
+			$second=$5;
+			$ipSource=$6;
+			$ipDestin=$8;
+			$portSource=$7;
+			$portDestin=0;
+			$protocol='ICMP';
+			
+		} elsif ($line=~/^([A-Za-z]{3})\s+(\d{1,2})\s(\d{2}):(\d{2}):(\d{2}).*RAF \(\d+\) block.*\[([0-9.]*):(\d+)\]->\[([0-9.]*):(\d+)\].*l=(\d+)\sf=0x(\d+).*$/) {
+		# GB3.2 format log file
+			$day=$2;
+			$month=$Month{$1};
+			$year=$this_year;
+			$year-- if ($month>$this_month); 
+			$hour=$3;
+			$minute=$4;
+			$second=$5;
+			$ipSource=$6;
+			$ipDestin=$8;
+			$portSource=$7;
+			$portDestin=0;
+			
+		} else {
+			$reason_skipped = "Failed ICMP parse";
+			return @rline;
+		}
+	
+	} elsif ($line =~ /UDP/) {
+		$protocol='UDP';
+		
+		if ($line=~/^([A-Za-z]{3})\s+(\d{1,2})\s(\d{2}):(\d{2}):(\d{2}).*Remote access filter blocks.*\[([0-9.]*)\/(\d+)\]->\[([0-9.]*)\/(\d+)\].*l=(\d+).*$/) {
+		# GB3.1 format log file
+
+			$day=$2;
+			$month=$Month{$1};
+			$year=$this_year;
+			$year-- if ($month>$this_month); 
+			$hour=$3;
+			$minute=$4;
+			$second=$5;
+			$ipSource=$6;
+			$ipDestin=$8;
+			$portSource=$7;
+			$portDestin=$9;
+
+		} elsif ($line=~/^([A-Za-z]{3})\s+(\d{1,2})\s(\d{2}):(\d{2}):(\d{2}).*RAF \(\d+\) block.*\[([0-9.]*):(\d+)\]->\[([0-9.]*):(\d+)\].*l=(\d+).*$/) {
+		# GB3.2 format log file
+
+			$day=$2;
+			$month=$Month{$1};
+			$year=$this_year;
+			$year-- if ($month>$this_month); 
+			$hour=$3;
+			$minute=$4;
+			$second=$5;
+			$ipSource=$6;
+			$ipDestin=$8;
+			$portSource=$7;
+			$portDestin=$9;
+
+		} else {
+			$reason_skipped = "Failed UDP parse";
+			return @rline;
+		}
+		
+	}  elsif ($line =~ /TCP/) {
+		$protocol = 'TCP';
+		
+		if ($line=~/^([A-Za-z]{3})\s+(\d{1,2})\s(\d{2}):(\d{2}):(\d{2}).*Remote access filter blocks.*\[([0-9.]*)\/(\d+)\]->\[([0-9.]*)\/(\d+)\].*l=(\d+) f=0x(\d+).*$/) {
+		# GB3.1 format log file
+
+			$day=$2;
+			$month=$Month{$1};
+			$year=$this_year;
+			$year-- if ($month>$this_month); 
+			$hour=$3;
+			$minute=$4;
+			$second=$5;
+			$ipSource=$6;
+			$ipDestin=$8;
+			$portSource=$7;
+			$portDestin=$9;
+			$rawflags="0x".$11;
+
+		} elsif ($line=~/^([A-Za-z]{3})\s+(\d{1,2})\s(\d{2}):(\d{2}):(\d{2}).*RAF \(\d+\) block.*\[([0-9.]*):(\d+)\]->\[([0-9.]*):(\d+)\].*l=(\d+) f=0x(\d+).*$/) {
+		# GB3.2 format log file
+
+			$day=$2;
+			$month=$Month{$1};
+			$year=$this_year;
+			$year-- if ($month>$this_month); 
+			$hour=$3;
+			$minute=$4;
+			$second=$5;
+			$ipSource=$6;
+			$ipDestin=$8;
+			$portSource=$7;
+			$portDestin=$9;
+			$rawflags="0x".$11;
+
+		} else {
+			$reason_skipped = "Failed TCP parse";
+			return @rline;
+		}
+		
+		if (hex($rawflags) & hex("0x01")) {
+			$flags.='F';
+		}
+		if (hex($rawflags) & hex("0x02")) {
+			$flags.='S';
+		}
+		if (hex($rawflags) & hex("0x04")) {
+			$flags.='R';
+		}
+		if (hex($rawflags) & hex("0x08")) {
+			$flags.='P';
+		}
+		if (hex($rawflags) & hex("0x10")) {
+			$flags.='A';
+		}
+		if (hex($rawflags) & hex("0x20")) {
+			$flags.='U';
+		}
+	}
+
+	$rline[0]=sprintf("%0.4d-%0.2d-%0.2d %0.2d:%0.2d:%0.2d %s",$year,$month,$day,$hour,$minute,$second,$tz);
+	$rline[1]=$userid;
+	$rline[2]=$count;
+	$rline[3]=$ipSource;
+	$rline[4]=$portSource;
+	$rline[5]=$ipDestin;
+	$rline[6]=$portDestin;
+	$rline[7]=uc $protocol;
+	$rline[8]=$flags;
+	return @rline;
+}

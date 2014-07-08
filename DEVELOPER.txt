@@ -1,0 +1,628 @@
+DShield Framework Clients
+
+Please read "Guidelines for Developing DShield Client Software" at
+http://www.dshield.org/specs.php
+
+OVERVIEW
+
+This directory contains the development files for the DShield "framework"
+client system.  Use this to develop a new DShield parser or to modify an
+existing parser.  The idea is that all the "framework" code for the
+different parsers is contained in one file so that all DShield clients that
+are developed using this system will have a common set of operating
+instructions.
+
+This is a simple system.  All the code for the client,  except for the log
+parser, is contained in 'framework.pl.' Individual parsers for specfic
+firewalls are contained in *.parser files. e.g. iptables.parser will
+be concatenated with framework.pl to make iptables.pl.  iptables.pl
+is the script that is used to convert iptables based logs.
+
+FILES TO WATCH OUT FOR
+
+build_clients.pl does this conversion.
+
+package_clients.pl assumes that build_clients.pl was just run and makes
+tarballs for all the clients.  Each tarball will consist of
+
+- README.txt       Information on how to configure and test the client script
+- {scriptname}.pl  (iptables.pl, in the above example)
+- dshield.cnf      Verbose Configuration file
+- test.cnf         Configuration file designed for testing
+- test_wrapper.sh  To test the script using test.cnf
+- *.lst            Lists of IP and port exclusions parameters (See README.txt)
+
+If you are going to develop a new parser, please develop using
+this arrangement and send the .parser file in to DShield.  We will add the
+.parser file to our copy of the framework development kit and
+generate a new tarball for distribution. And a new Framework Development
+Kit that will now contain your parser.
+
+If you find problems with existing parsers, please submit changes as a
+separate parser, not as a modified version of the final script.
+(i.e., Don't send in a modified version of iptables.pl.)
+
+
+REQUIREMENTS FOR THE PARSER
+
+The parser should accept a log line and convert it to DShield format. Look
+at the existing ipchains.parser or iptables.parser files (or whatever
+parser is most familiar to you) to get an idea on how this works and what
+variables are used, etc.  Try it with a small sample log file so
+that you will know what is in the log (and what to expect to see
+in the output.)
+
+The development process should be something like:  Work on your
+parser file. Then use build_clients.pl to assemble it
+into a working script. Have some sort of test.cnf configuration file
+available.  Execute it with some sort of "wrapper" script.
+See http://www.dshield.org/clients/framework/README.php for instructions
+and hints about testing and configuration.
+
+
+DOCUMENT YOUR PARSER IN THE HEADING BLOCK
+
+The beginning of the parser should contain comments to document how to
+configure the script for the firewall that this particular parser is
+designed to parse.   This section should be formatted like
+
+# DShield iptables parser
+#
+# iptables defaults to saving logs in /var/logs/messages, so set
+# 'log=/var/log/messages' in dshield.cnf.
+#
+# The parser defaults to only processing lines that contain 'kernel:'
+# If this isn't correct for you, then set the 'line_filter' variable in
+# dshield.cnf so it is a string that is contained in the log lines
+# that the parser should process.
+#
+my $PARSER_VERSION = "2002-01-25";
+
+Each comment line must start with a "#" character.   Keep the line
+length less than 80 characters, please.  Do not have any blank
+lines in this section.  At the ending of this section have
+
+my $PARSER_VERSION = "2002-01-25"; 
+
+with the date in "YYYY-MM-DD" format.  ($PARSER_VERSION is used to identify
+the parser in the subject line of the email that is sent
+to report@dshield.org.)  Then have a blank line.
+
+The package_clients.pl script that assembles the scripts from the *.parser
+files and framework.pl will treat all lines until the first blank line
+as the heading.  The heading portion of the parser will be put
+at the beginning of the .pl file.  The remainder of the parser will be
+appended to the end of the .pl file.  This heading will be appended to the
+README.txt that is put in each tarball so that it is customized for each
+individual parser. All the headings are concatenated and appended to
+DEVELOPER.txt that is put in the Framework Developemt Kit and is displayed
+at http://www.dshield.org/clients/framework/DEVELOPER.php
+
+The main point here is that everything before the first blank line
+is treated as the heading.  Comments and $PARSER_VERSION go in the heading.
+
+REGULAR EXPRESSIONS ARE THE HEART OF THE PARSER
+
+Most of the existing parsers use one, or more, regular expressions to pick
+the relevent portions out of the log line that is being converted.
+ See http://www.dshield.org/regex.php for documentation
+on how regular expressions are used for log parsing.
+
+
+TEXT2HTML
+
+A Text2HTML script is included that will convert ASCII text files to HTML.
+This isn't really needed for writing a framework client, but I included
+it because I use it to make the web site version of the document
+files.  This is a lot easier authoring system than fooling around with SGML
+or XML.  YMMV.
+
+http://www.dshield.org/clients/framework/README.php was made by
+processing the http://www.dshield.org/clients/framework/README.txt file
+that is in this distribution with the text2html.pl script that is in
+this distribution.
+
+The Text2HTML script came from http://peter.verhas.com/progs/perl/text2html/
+I tweaked it a bit so it would work with these text documention files the way
+I formatted them.
+
+
+WHERE TO SEND YOUR WORKING PARSER
+
+When you get it working, send the .parser file (and a
+sample log file, please) to info@dshield.
+
+
+DOCUMENTATION FOR ALL PARSERS
+
+#-------cisco.parser------
+# Parser for Cisco PIX and Cisco ACL
+#
+# If this doesn't work for your CISCO router, please send sample logs
+# to info@dshield.org so we can fix the parser.
+#
+# 2002-08-08  Changed 'inside:' to '\w+' in regexes at Dave Fogarty's
+#             suggestion
+# 2002-10-26  Loosened regexes for ICMP.  PIX-3.* to PIX-.*
+#             Changed a few " " (one space) to "\s*" (zero or more whitespaces) 
+#
+my $PARSER_VERSION = "2002-10-26";
+
+#-------di604syslog.parser------
+# DShield D-Link DI604 syslog parser
+#
+# D-Link DI604 syslog defaults to saving logs in /var/logs/messages, so set
+# 'log=/var/log/messages' in dshield.cnf.
+#
+# Set the 'line_filter' variable in dshield.cnf so it is a string that 
+# is contained in the log lines that the parser should process,
+# such as the di604 hostname.
+#
+# Typical input lines
+#Apr 10 04:13:25 di604 Unrecognized attempt blocked from 80.167.147.198:1986 to 81.227.73.40 UDP:2463^M ^J
+#Apr 10 04:13:32 di604 last message repeated 2 times^J
+
+#-------foundry.parser------
+# Foundry ServerIron log Parser
+# (http://www.foundrynet.com/products/webswitches/index.html)
+#
+# The ServerIron can be configured to log all denied packets to a syslog 
+# server.
+#
+# This parser handles the syslog lines, extracts the relevant entries and 
+# converts them into the proper format.
+# 
+# This may or may not work with other Foundry products, I have no way of
+# verifying that. Please notify me if you are using it with a product not  
+# listed here.
+#
+# ------------------------------------------------------------------------
+# Configuration:
+# 1) Install a syslog server.
+# 2) It would be a good idea to log the Foundry messages to a seperate
+#    logfile, fx:
+#    local5.*           /var/log/foundry/syslog.log
+#
+# 3) Point dshield.cnf at that logfile, fx:log=/var/log/foundry/syslog.log
+#
+# If you want to do a logrotate on the Foundry log and want to make sure
+# you get all entries, you could point the logfile
+# at "log=/var/foundry/syslog.log.1" instead and to the following in
+# your logrotate.conf:
+# /var/log/foundry/syslog.log {
+#    daily
+#    rotate 365
+#    postrotate
+#      /bin/kill -HUP `cat /var/run/syslogd.pid 2>/dev/null` 2>/dev/null || true
+#      /path/to/parser/foundry.pl 
+#    endscript
+# }
+#
+#
+# Note the rotate value, you might want something else ;)
+#
+# ------------------------------------------------------------------------
+# Foundry Configuration:
+# In your Foundry box, you need to do a few things:
+# 1) Set up logging. fx. like this where 1.2.3.4 is the ip of your syslog
+#    server:
+#    logging 1.2.3.4
+#    logging facility local5
+#
+# 2) Your filter list must end with a line like this:
+# 	access-list 100 deny ip any any log
+#   
+# Note that when the first line in your access-list is a "permit" line,
+# the Foundry box denies everything not permitted through the acess-list.
+# The line above makes it log any hits to that rule.
+# Also, when you need to add new lines to the access-list, you must first
+# remove the deny line mentioned about and re-insert it again.
+#
+# 2004-02-18 Discovered that the Foundry actually sometimes returns lines
+#            with other than '1 packets' so we now parse that too. 
+# 2004-02-17 Added tftp_port 69 in conversion table.
+# 2004-02-16 Optimized a few lines.
+# 2004-02-15 First version.
+# /Martin Jakobsen 
+#
+my $PARSER_VERSION = "2004-02-18";
+
+#-------fr114p.parser------
+#	DShield parser for Netgear FR114P and syslog, by John Gill, <jg@jgill.net>.
+#	The Netgear router defaults to saving logs in /var/log/messages, so set
+# 	'log=/var/log/messages' in dshield.cnf 
+#	If $line_filter is not set, 'Inbound Default'  will be used to filter.
+#	The syslog timestamp is used rather than the the Netgear one as 
+#	the router clock is much less accurate.  YMMV.
+my $PARSER_VERSION = "2005-09-28";
+
+#-------fw1.parser------
+# Checkpoint Firewall-1 user alert parse routine by Ken McKinlay <kmckinlay@home.com>
+#
+# http://www.checkpoint.com/products/security/firewall-1.html
+#
+my $PARSER_VERSION = "2001-12-27";
+
+#-------fw1_41.parser------
+# Checkpoint Firewall-1 4.1 parser
+# (based on Checkpoint FW-1 user alert parse routine by
+# Ken McKinlay <kmckinlay@home.com>)
+#
+# http://www.checkpoint.com/products/security/firewall-1.html
+#
+# Log is to be generated with "fw logexport" using the default semicolon
+# (;) for a delimiter and the "-n" option to force no name lookup.
+#
+# It has been discovered that the output of "fw logexport" is not
+# always in the same format.  Two different formats have been observed
+# so far.  In each the sequence of the fields we are interested in has
+# changed.  However, the first line of the logexport file always
+# contains the layout, for example (line chopped for readability):
+#
+#num;date;time;orig;type;action;alert;i/f_name;i/f_dir;proto;src;dst;
+#service;s_port;len;rule;xlatesrc;xlatedst;xlatesport;xlatedport;
+#icmp-type;icmp-code;agent;orig_from;orig_to;from;to;reason;reason:;
+#user;res_action;resource;sys_msgs
+#
+# This parser has been rewritten so that the first line is parsed
+# to get the indexes for the fields we want, and then use those
+# for subsequent parsing.  This means that you can't have a filter
+# for line-filter or line-exclude unless those patterns allow the
+# first line through, e.g.:
+#
+# line_filter=^num|drop\;\;hme0
+#
+# Also, FW1-4.1 has a nasty habit of putting its own string-based
+# idea of what ports are source and destination, and this may not
+# match what's in /etc/services (or /etc/inet/services), so you
+# may have to modify /etc/services to include definitions for the
+# ports, for example:
+# datametrics     1645/udp        RADIUS
+# YMMV on this since many such ports are given names that are unique
+# to each installation.
+#
+# Normally you would run fw1_41.pl with no command line options,
+# so you should have put dshield.cnf in /etc.  You should set
+# 'log=/root/dshield/fw1.log' in your /etc/dshield.cnf file.
+# However, I run from crontab every midnight using this script:
+#
+# #!/bin/ksh
+# 
+# FWDIR=/opt/CPfw1-41; export FWDIR
+# DSHIELDDIR=/var/downloads/dshield; export DSHIELDDIR
+# 
+# cd $FWDIR/log
+# 
+# $FWDIR/bin/fw logswitch
+# logname=`/bin/date "+%d%b%Y"`
+# logname=`/bin/ls ${logname}*.log`
+# 
+# $FWDIR/bin/fw logexport -n -i $logname -o ${logname}export
+# 
+# LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib:/usr/lib:/lib
+# export LD_LIBRARY_PATH
+# 
+# $DSHIELDDIR/fw1_41/fw1_41.pl \
+#  -log=${logname}export \
+#  -config=$DSHIELDDIR/fw1_41sp5/dshield.cnf \
+#  -whereto=MAIL
+#-- end of script
+#
+# Note the usual warning that any option specified on the command
+# line must NOT be specified in your config file.
+#
+# See the FW-1 documentation for more on logexport and logswitch.
+#
+my $PARSER_VERSION = "2002-05-15";
+
+#-------fw1_41sp5.parser------
+# Checkpoint Firewall-1 4.1 SP5 parser
+# (based on Checkpoint FW-1 user alert parse routine by
+# Ken McKinlay <kmckinlay@home.com>)
+#
+# http://www.checkpoint.com/products/security/firewall-1.html
+#
+# Log is to be generated with "fw logexport" using the default semicolon
+# (;) for a delimiter.  You could create a script that cron runs like
+#
+# #!/bin/sh
+#
+# /etc/fw/bin/fw logexport -n -o /root/dshield/fw1.log
+# /etc/fw/bin/fw logswitch
+# /root/dshield/fw_41.pl
+#
+# would export the FW-1 log to /root/dshield/fw.log and then rotate the
+# FW-1 logs, and then run /root/dshield/fw_41.pl
+#
+# Probably you want to parse only the lines that contain useful
+# information.  For instance, reporting on traffic that was allowed
+# is not particularly useful.  On a Solaris system, for example, the
+# logexport lines for the external interface are the ones you want,
+# and you'd set line_filter in the config file appropriately:
+#
+# line_filter=drop\;\;hme0
+#
+# The above would accept for parsing only lines that were to do with
+# interface 'hme0' and that were for connections that were dropped only.
+# If your FW1 system is so configured, you might also want to filter
+# based on whether the line is for an inbound or outbound packet, or
+# that were rejected, etc.  See the FW1 docs for full details.
+#
+# Because fw_41sp5.pl is normally run with no command line options,
+# you should have put dshield.cnf in /etc.  You should set
+# 'log=/root/dshield/fw1.log' in your /etc/dshield.cnf file.
+# However, I run from crontab every midnight using this script:
+#
+# #!/bin/ksh
+# 
+# FWDIR=/opt/CPfw1-41; export FWDIR
+# 
+# cd $FWDIR/log
+# 
+# $FWDIR/bin/fw logswitch
+# logname=`/bin/date "+%d%b%Y"`
+# logname=`/bin/ls ${logname}*.log`
+# 
+# $FWDIR/bin/fw logexport -n -i $logname -o ${logname}export
+# 
+# LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib:/usr/lib:/lib
+# export LD_LIBRARY_PATH
+# 
+# /var/downloads/dshield/fw1_41sp5/fw1_41sp5.pl \
+# -log=${logname}export \
+# -config=/var/downloads/dshield/fw1_41sp5/dshield.cnf \
+# -whereto=MAIL
+#-- end of script
+#
+# See the FW-1 documentation for more on logexport and logswitch.
+#
+my $PARSER_VERSION = "2002-05-14";
+
+#-------gauntlet.parser------
+# Gauntlet parser
+my $PARSER_VERSION = "2002-04-27";
+
+#-------gnatbox.parser------
+# Parser for Gnatbox syslogs
+#
+# by Phil Dye <phil.dye@alchemydigital.com>
+#   version $Id: gnatbox.parser,v 1.1.1.1 2003/10/09 18:26:39 jullrich Exp $
+#
+# Parses syslogs from the Global Technology Associates Gnatbox
+#  (www.gnatbox.com)
+#
+# NOTE: Because my Gnatbox has a drifting CMOS clock, the syslog timestamps
+# were wrong. To correct this, enable the "Use non-standard date format" option
+# in the Gnatbox logging config; this forces syslog to add its own timestamps.
+# This parser attempts to handle the resulting double timestamp correctly, 
+# but YMMV!
+#
+# Configuration:
+#  - Setup your Gnatbox and syslog to put just the Filter 
+#    alerts in a seperate logfile, and set the location of that logfile
+#    in your dshield.cnf
+#  - Set line_filter in your dshield.cnf to be "FILTER:".
+#
+my $PARSER_VERSION = "2002-08-20";
+
+#-------ipchains.parser------
+# DShield ipchains parser
+#
+# ipchains defaults to saving logs in /var/logs/messages, so set
+# 'log=/var/log/messages' in dshield.cnf
+#
+# The parser defaults to only processing lines that contain 'input DENY'
+# If this isn't correct for you, then set the 'line_filter' variable in
+# dshield.cnf so it is a string that is contained in the log lines
+# that the parser should process.
+#
+my $PARSER_VERSION = "2002-03-28";
+
+#-------ipf.parser------
+# ipf parse routine by Ken McKinlay <kmckinlay@home.com> based on material by:
+#	Dirk-Willem van Gulik <dirkx@webweaving.org>
+# Now supports dates like 'Apr 16'
+my $PARSER_VERSION = "2002-04-25";
+
+#-------iptables.parser------
+# DShield iptables parser
+#
+# iptables defaults to saving logs in /var/logs/messages, so set
+# 'log=/var/log/messages' in dshield.cnf.
+#
+# The parser defaults to only processing lines that contain 'kernel:'
+# If this isn't correct for you, then set the 'line_filter' variable in 
+# dshield.cnf so it is a string that is contained in the log lines
+# that the parser should process.
+#
+my $PARSER_VERSION = "2002-03-28";
+
+#-------linksys.parser------
+# Linksys Etherfast Roouter Parser
+#
+# You must run the "linksys" program to get the logs from the router
+# to /var/log/linksys.log  (And set 'log=/var/log/linksys.log' in dshield.cnf 
+#
+# Your Linksys router must have firmware version 1.37, or later to support
+# logging. Connect to its administration interface and go to the "log"
+# tab. Then set the IP to the IP of your Linux machine and click on "Apply."
+#
+#  1) gcc -o linksys linksys.c
+#      (Will compile linksys.c and make the executable named 'linksys')
+#  2) ./linksys &
+#      (Run it in the background and return to the command prompt.)
+#  3) add the line '(path to)/linksys &' to /etc/rc.d/rc.local (at the end)
+#     to automatically start it after a reboot.
+#     Type 'ps ax' to see if it is running.
+#
+# It should start saving logs to /var/logs/linksys.log.  If so, then good.
+# See README.txt to configure this script to send them into DShield.org
+#
+my $PARSER_VERSION = "2001-12-28";
+
+#-------netscreen.parser------
+# DShield netscreen parser
+#
+# Based on the iptables parser
+#
+#
+# The parser defaults to only processing lines that contain 'NetScreen device_ie'
+# If this isn't correct for you, then set the 'line_filter' variable in 
+# dshield.cnf so it is a string that is contained in the log lines
+# that the parser should process.  (Or change the code, below.)
+#
+my $PARSER_VERSION = "2008-01-28";
+
+#-------pf.parser------
+# OpenBSD Packet Filter parser
+#
+# Packet Filter logs in a binary format.  Use tcpdump to convert to ASCII.
+# tcpdump -e -n -tttv -r pflog.binary > pf.log
+#
+# The OpenBSD Packet Filter HOWTO http://www.deadly.org/pf-howto/
+#
+my $PARSER_VERSION = "2008-02-19";
+
+#-------pfsense.parser------
+# OpenBSD Packet Filter parser (patched for pfSense) 
+# http://www.pfsense.org/
+# Patched for pfSense pf logs by Klaus Lichtenwalder
+# (http://lists.sans.org/pipermail/list/2008-August/027270.html)
+# Patched version submitted by Raman Gupta
+#
+# Packet Filter logs in a binary format.  Use tcpdump to convert to ASCII.
+# tcpdump -e -n -tttv -r pflog.binary > pf.log
+#
+# The OpenBSD Packet Filter HOWTO http://www.deadly.org/pf-howto/
+#
+my $PARSER_VERSION = "2008-10-12";# DShield Client Framework
+
+#-------portsentry.parser------
+# DShield parser for Psonic Portsentry
+#
+# Based on Tim Rushing's tpfw parser for Tiny Personal Firewall
+#
+# You *must* define your own target IP in the dshield.cnf file, just like
+# is done for tpfw.
+#
+# Thanks to Joe Duncan for the original version of this parser.
+#
+# http://www.psionic.com/abacus/portsentry/
+#
+my $PARSER_VERSION = "2003-02-10";
+
+#-------snort_18_syslog.parser------
+# Parser for snort 1.8
+# Taken from snort_18_syslog.pl
+my $PARSER_VERSION = "2002-08-22";
+
+#-------snort_portscan.parser------
+#   DShield parser for SNORT PORTSCAN
+my $PARSER_VERSION = "2002-12-17";
+
+#-------sonicwall.parser------
+# DShield parser for SonicWALL firewall appliances -*- mode: perl;-*-
+# 
+# In some versions of the SonicWALL firmware (2.0.1 and later) for SOHO2
+# and friends it's also possible to send out the log to syslog, instead
+# of just emailing it.
+# Under the "Log Settings" tab of the web interface configure your
+# firewall to send syslog messages to the machine of your choice, and
+# make sure that the syslog format is left at 'Default'! 
+# The firewall will then send the selected messages to the LOCAL0 
+# syslog facillity, configure your syslog.conf accordingly and list
+# the resulting file in the dshield configuration.
+#
+# The parser by default uses the time-stamp provided by the firewall, 
+# but you can change it to use the syslog one, by changing the if- 
+# statement following the TIME_STAMP_SOURCE comment
+
+#-------tpfw.parser------
+# DShield Unix syslog Tiny Personal Firewall parser
+#
+# Based on the Dshield IPCHAINS parser version 2001-12-18
+#
+#  Written by Tim Rushing (send comments and bug reports to dshield@threenorth.com)  
+#
+# Tiny Personal Firewall for Windows machines supports remote logging
+# to syslog facilities.  However, the logs will not contain a target ip address. See
+# IMPORTANT NOTE below for required changes to the dshield.cnf to enable this script
+# work.
+#
+# Unfortunately, the logs are not easily parseable.  Fields are not consistent.
+# I've written the regex to deal with log lines pertaining to tcp, udp and icmp like 
+# below.  It should properly handle instances where TPFW has not looked up an ip address
+# into a fully qualified domain, instances where it has and instances where it has been
+# told not to do so. This may well fail for other format.
+#
+#   Feb 25 13:10:21 samantha Rule 'block all': Blocked: In UDP, SNODGRASS [10.168.1.3:6001]->localhost:6001, Owner: no owner
+#   Feb 25 15:05:18 host1 Rule 'chris': Blocked: In TCP, 10.109.162.195:64981->localhost:45696, Owner: no owner
+#   Feb 26 11:50:49 samantha Rule 'Packet to unopened port received': Blocked: In TCP, AC8CEAB7.ipt.foo.com [10.140.234.183:4663]->localhost:27374, Owner: no owner
+#   Feb 26 14:34:07 host1 Rule 'block all': Blocked: In ICMP [8] Echo Request, 10.15.205.194->localhost, Owner: Tcpip Kernel Driver
+#   Feb 26 14:34:31 host1 Rule 'block all': Blocked: In UDP, 10.15.205.194:1041->localhost:33468, Owner: no owner
+#   Feb 26 17:40:25 samantha Rule 'Packet to unopened port received': Blocked: In TCP, 10.134.83.26:4497->localhost:80, Owner: no owner
+#   Feb 26 17:40:28 samantha Rule 'Packet to unopened port received': Blocked: In TCP, h-66-134-83-26.LSANCA54.foo.net [10.134.83.26:4497]->localhost:80, Owner: no owner
+#   Feb 27 21:34:27 host1 Rule 'block all': Blocked: In TCP, (null) [10.18.250.93:21]->localhost:21, Owner: no owner
+#   Feb 28 08:47:58 host1 Rule 'block all': Blocked: In TCP, (null) [10.78.246.135:2727]->localhost:80, Owner: no owner
+#   Feb 28 09:33:12 host1 Rule 'block all': Blocked: In ICMP [8] Echo Request, (null) [10.170.162.249]->localhost, Owner: Tcpip Kernel Driver
+#
+# IMPORTANT NOTE:  Tiny Personal Firewall does not include a target ip in its logs.
+#                  It will include the name of the machine sending the logs (samantha
+#                  and host1 in the examples above).  In order for the code to parse
+#                  properly, you must place a line in the dshield.cnf file in the following
+#                  format:
+#
+#                   hostname=ip_address
+#
+#                  e.g.
+#
+#                  samantha=192.168.1.1
+#                  host1=192.168.1.5
+#
+#                  If you do not have a fixed ip to use, then this parse script will not
+#                  be usable.
+#
+#                  If line_filter is not defined in dshield.cnf, then "Blocked: In" will be used.
+#
+#
+# KNOWN PROBLEMS: If multiple syslog entries come in with the same format except for the time,
+#                 then syslog will list them as
+#
+#                 Feb 28 12:50:43 host1 last message repeated 3 times
+#
+#                 This parser will not see those lines, so it will not always show
+#                 multiple attacks from the same ip.  (If there are any other syslog entries
+#                 that intervene, then the attacks will be fully listed and processed.)
+#
+my $PARSER_VERSION = "2002-03-02";
+
+
+
+GLOBAL VARIABLES THAT THE PARSERS SHOULD USE
+
+#
+# The parser should use these variables.
+#
+# @rline - array to be returned holding the required values for Dshield
+# See http://www.dshield.org/specs.php#dshield_format 
+#
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+#
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regex that each line must match.  
+# $line_exclude Regex for lines we want to exclude.
+# $reason_skipped  You should fill this with the reason a line wasn't parsed.

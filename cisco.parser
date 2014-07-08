@@ -1,0 +1,208 @@
+# Parser for Cisco PIX and Cisco ACL
+#
+# If this doesn't work for your CISCO router, please send sample logs
+# to info@dshield.org so we can fix the parser.
+#
+# 2002-08-08  Changed 'inside:' to '\w+' in regexes at Dave Fogarty's
+#             suggestion
+# 2002-10-26  Loosened regexes for ICMP.  PIX-3.* to PIX-.*
+#             Changed a few " " (one space) to "\s*" (zero or more whitespaces) 
+#
+my $PARSER_VERSION = "2002-10-26";
+
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regexp that each line must match.  
+# $line_exclude Regexp for lines we want to exclude.
+# $reason_skipped Fill this with the reason a line isn't processed.
+
+sub parse {
+# Specs for Cisco PIX logs are at
+# http://www.cisco.com/univercd/cc/td/doc/product/iaabu/pix/pix_61/syslog/index.htm
+
+    my $line = shift;
+
+	# Is this any kind of packet filter log line?
+	if ($line_filter) { $reason_skipped = "Does not contain $line_filter"; return 0 unless ( $line =~ /$line_filter/ ) }
+
+	# Or maybe something undesirable that we don't want to see?
+	if ($line_exclude) { $reason_skipped = "Excluded because it contains $line_exclude"; return 0 if ( $line =~ /$line_exclude/ ) }
+
+	#print "$line\n";
+    my $count = 1;
+    my $flags = "";
+    
+    my ($day,$month,$year,$hour,$minute,$second,$ipSource,$portSource,$ipDestin,$portDestin,$protocol);
+	my ($tmp1, $tmp2);
+	my ($action, $descrip, $line_type);
+    my (@rline);
+
+  if ($line =~ /icmp/i) {  
+# ICMP
+# Mar  28 20:28:02 [10.10.10.10.209.20] 4297: Mar 28 20:28:00.017 DST: %PIX-3-106010: Deny inbound icmp src outside: 1.2.3.4 dst inside: 4.5.6.7 (type 0, code 8) 
+	if ($line=~/^([A-Z][a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}).*%PIX-.*: (.*) outside:\s*([0-9.]*).*\w+: ([0-9.]*)\s+\(type (\d+), code (\d+)\)/ ) {
+	#               Month           Day        HH     MM      SS             Action            Src                Dst              type         code
+	#                1     	         2          3      4       5               6                7                  8                9            10
+		$line_type = "ICMP-1";
+
+# Mar  28 20:28:03 [10.10.10.10.209.20] 4297: Mar 28 20:28:00.017 DST: %PIX-3-106014: Deny inbound icmp src interface name: 9.8.7.6 dst interface name: 4.3.2.1 (type 1, code 9)
+	} elsif ($line=~/^([A-Z][a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}).*%PIX-.*: (.*):\s*([0-9.]*).*:\s*([0-9.]*)\s+\(type (\d+), code (\d+)\)/ ) {
+	#                   Month           Day        HH     MM      SS               Action    Src        Dst              type         code
+	#                     1              2          3      4       5                6        7          8                9            10
+		$line_type = "ICMP-1";
+
+# Mar  28 20:28:04 [10.10.10.10.209.20] 4297: Mar 28 20:28:00.017 DST: %PIX-3-313001: Denied ICMP type=0, code=8 from 1.2.3.4 on interface int_name
+# This gets regexed, but we wont pass it
+	} elsif ($line=~/^([A-Z][a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}).*%PIX-.*: (.*) type=(\d+), code=(\d+) from ([0-9.]*)/ ) {
+	#                   Month           Day        HH     MM      SS               Action      Type        Code        Src
+	#                     1              2          3      4       5                6           7           8           9            10
+#		$line_type = "ICMP-2";
+		$reason_skipped = "This type of ICMP record doesn't have a target IP";
+		return @rline;
+
+	} else {
+		$reason_skipped = "Failed processing ICMP: $6";
+		return @rline;
+	}
+
+	# At this point we assume that we have parsed a valid ICMP record
+
+	$month=$Month{$1};
+	$day=$2;
+	$year=$this_year;
+	$year-- if ($month>$this_month); 
+	$hour=$3;
+	$minute=$4;
+	$second=$5;
+	$action= uc $6;
+	$protocol='ICMP';
+	$flags="";
+
+	if ( $line_type eq "ICMP-1") {
+	    $ipSource=$7;
+		$ipDestin=$8;
+	    $portSource=$9;		# Type
+		$portDestin=$10;	# Code
+	} else {
+	    $portSource=$7;		# Type
+		$portDestin=$8;		# Code
+	    $ipSource=$9;
+		$ipDestin="???";
+	}
+  } else { # if ($line =~ /icmp/)
+# Now process all non-ICMP lines
+# Dec 16 00:00:21 aaa.bbb.net %PIX-2-106007: Deny inbound UDP from 192.168.0.1/20854 to 10.253.83.126/53 due to DNS Query
+# Dec 16 00:00:26 aaa.bbb.net %PIX-2-106001: Inbound TCP connection denied from 198.0.0.1/48236 to 10.0.0.1/25 flags SYN on interface outside
+	if ($line=~/^([A-Z][a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}).*PIX-2.*: (.*) ([0-9.]*)\/(\d+) to ([0-9.]*)\/(\d+)\s+(.*)/) {
+	#               Month           Day        HH     MM      SS              Action  Src     SrcPrt     Dst    DstPrt   Description                       
+	#                1     	         2          3      4       5                6      7        8         9      10       11
+
+		$line_type = "PIX-2";
+
+# Dec 16 00:00:21 aaa.bbb.net %PIX-2-106007: Deny inbound UDP from 192.168.0.1/20854 to 10.253.83.126/53 due to DNS Query
+# Dec 16 00:00:26 aaa.bbb.net %PIX-2-106001: Inbound TCP connection denied from 198.0.0.1/48236 to 10.0.0.1/25 flags SYN on interface outside
+# Mar 26 11:38:49 gateway %PIX-4-106023: Deny tcp src outside:204.9.9.9/60014 dst inside:10.0.0.1/113 by access-group "acl_out"
+
+#	} elsif ($line=~/^([A-Z][a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}).*PIX-4.*: (.*) outside:([0-9.]*)\/(\d+) +dst \w+:([0-9.]*)\/(\d+)\s+(.*)/) {
+	} elsif ($line=~/^([A-Z][a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}).*%PIX-.*: (.*) outside:([0-9.]*)\/(\d+)\s+dst \w+:([0-9.]*)\/(\d+)\s+(.*)/) {
+	#               Month           Day        HH     MM      SS              Action         Src     SrcPrt              Dst    DstPrt   Description                       
+	#                1     	         2          3      4       5                6             7        8                  9      10       11
+		$line_type = "PIX-N ACL";
+
+	# Cisco ACL, maybe?
+# Jan  1 01:02:03 [1.2.3.4] 12345: %ABC-1-ABCDEFGH: abcd 123 denied tcp  5.6.7.9(12345) -> 10.10.10.10(111), 1 packet
+	}  elsif ($line=~/^([A-Z][a-z]{2})\s+(\d{1,2}) (\d{2}):(\d{2}):(\d{2}).*%...-\d.*: (.*) +([0-9.]*)\((\d+)\).*-> +([0-9.]*)\((\d+)\)(.*)/ ) {
+	#               Month           Day        HH     MM      SS                      Action   Src     SrcPrt          Dst     DstPrt  Description
+	#                1     	         2          3      4       5                        6       7        8              9       10       11
+		$line_type = "ACL";
+
+  } else { # Didn't match any regexes
+
+	$reason_skipped = "Didn't match any of the parser's regexes";
+	return @rline;
+  } # Non-ICMP line matching regexes
+
+	# Well, we matched one of the non-ICMP regexs, now let's see what we have.
+	    $month=$Month{$1};
+	    $day=$2;
+	    $year=$this_year;
+	    $year-- if ($month>$this_month); 
+	    $hour=$3;
+	    $minute=$4;
+	    $second=$5;
+		$action=uc $6;
+	    $ipSource=$7;
+	    $portSource=$8;
+		$ipDestin=$9;
+		$portDestin=$10;
+		$descrip=$11;
+
+		if ($action =~ /UDP/ ) {
+		    	$protocol="UDP";
+		} elsif ($action =~ /TCP/ ) {
+		    	$protocol="TCP";
+		} else {
+				# Currently, reject the line unless it is TCP or UDP
+				# ICMP is supposed to be handled above.
+				$reason_skipped = "Can only process TCP or UDP for $line_type";
+			    return @rline;
+		}
+
+		$flags="";
+		if( $descrip =~ /^flags/ ) {
+				if ($descrip =~ /SYN/ ) { $flags .= "S"; }
+				if ($descrip =~ /ACK/ ) { $flags .= "A"; }
+				if ($descrip =~ /FIN/ ) { $flags .= "F"; }
+				if ($descrip =~ /URG/ ) { $flags .= "U"; }
+				if ($descrip =~ /RES/ ) { $flags .= "R"; }
+				if ($descrip =~ /PSH/ ) { $flags .= "P"; }
+		}
+		#$flags = $line_type; # For debugging only!  Should be commented out.
+	} # if ($line =~ /icmp/ )
+
+	# We are done regexing both ICMP and non-ICMP.
+	
+	if ( 6 == 9 ) {
+	# Not ready for this test.  It rejects too many valid lines.
+		if (  $action =~ /INBOUND/ ) {
+			$reason_skipped = "";
+		} else {
+			$reason_skipped = "Not an inbound record: Action is `$action`";
+			return @rline;
+		}
+	}
+
+	# At this point we assume that it was a valid line and has been parsed.
+	# So we assemble it in DShield format and return.
+    $rline[0]=sprintf("%0.4d-%0.2d-%0.2d %0.2d:%0.2d:%0.2d %s",$year,$month,$day,$hour,$minute,$second,$tz);
+    $rline[1]=$userid;
+    $rline[2]=$count;
+    $rline[3]=$ipSource;
+    $rline[4]=$portSource;
+    $rline[5]=$ipDestin;
+    $rline[6]=$portDestin;
+    $rline[7]=uc $protocol;
+    $rline[8]=$flags;
+    #print join('|',@rline); print "\n";
+	#print "-" x 79;print "\n";
+    return @rline;
+}
+

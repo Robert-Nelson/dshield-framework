@@ -1,0 +1,82 @@
+#   DShield parser for SNORT PORTSCAN
+my $PARSER_VERSION = "2002-12-17";
+
+#
+#  SNORT PORTSCAN Parser
+#    parser for snort portscan log    
+#
+#  sample:
+# Jun 10 01:02:03 1.2.3.4:1234 -> 4.3.2.1:4321 SYN ******S*
+#
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Array of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regexp that each line must match.  
+# $line_exclude Regexp for lines we want to exclude.
+
+sub parse {
+    my $line=shift;
+    my @rline;
+    my ($year, $month);
+
+	# We always need to test for this.
+	return 0 unless ( $line =~ / -> / );
+
+    # Optional test for inclusion
+	if ($line_filter) { return 0 unless ( $line =~ /$line_filter/ ) }
+
+	# Or maybe something undesirable that we don't want to see?
+	if ($line_exclude) { return 0 if ( $line =~ /$line_exclude/ ) }
+
+    my @parts=split(" ",$line);
+
+	$month=$Month{$parts[0]};
+	if ($month <= $this_month ) {
+		$year = $this_year;
+	} else {
+		$year = $this_year - 1;
+	}
+
+    $rline[0]=sprintf("%0.4d-%0.2d-%0.2d %s %s",$year,$month,$parts[1],$parts[2],$tz);
+    $rline[1]=$userid;
+    $rline[2]=1;
+    ($rline[3],$rline[4])=split(":",$parts[3]);
+    ($rline[5],$rline[6])=split(":",$parts[5]);
+
+	# DShield only accepts TCP, UDP and ICMP.  All others are rejected.
+	if ($parts[6] eq "TCP") {
+		$rline[7] = "TCP";
+	} elsif ($parts[6] eq "UDP") {
+		$rline[7] = "UDP";
+	} elsif ($parts[6] eq "ICMP") {
+		$rline[7] = "ICMP";
+	} elsif ($parts[6] eq "SYN") {
+		$rline[7] = "TCP";
+	} elsif ($parts[6] eq "XMAS") {
+		$rline[7] = "TCP";
+	} else {
+		return 0;
+	}
+ 		
+	# Remove junk from flags
+    $rline[8]=$parts[7];
+    $rline[8] =~ s/\*//g;
+    return @rline;
+}

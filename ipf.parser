@@ -1,0 +1,114 @@
+# ipf parse routine by Ken McKinlay <kmckinlay@home.com> based on material by:
+#	Dirk-Willem van Gulik <dirkx@webweaving.org>
+# Now supports dates like 'Apr 16'
+my $PARSER_VERSION = "2002-04-25";
+
+
+#
+#  OpenBSD ipf Parser
+#    parser for ipf log files from OpenBSD
+#
+#  sample:
+
+# 24/06/2001 23:41:01.084778              ep0 @0:11 p 1.2.3.4,2986 -> 5.6.7.8,27374 PR tcp len 20 48 -S IN
+# 25/06/2001 01:46:56.062860              ep0 @0:11 p 1.2.3.4,53 -> 5.6.7.8,46996 PR udp len 20 71  IN
+# 25/06/2001 13:18:46.614329 2x              ep0 @0:11 p 1.2.3.4,18940 -> 5.6.7.8,27374 PR tcp len 20 48 -S IN
+#
+# and also
+# 
+# Apr 16 03:31:26 shadow ipmon[13262]: 03:31:25.230438                fxp0 @0:21 b 12.33.247.3,2114 -> 216.210.163.26,113 PR tcp len 20 60 -S IN 
+#
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regexp that each line must match.  
+# $line_exclude Regexp for lines we want to exclude.
+# $reason_skipped Fill this with the reason a line isn't processed. 
+
+sub parse {
+    my $line = shift;
+
+    my ($day,$month,$year,$hour,$minute,$second,$count,$action,$ipSource,$portSource,$ipDestin,$portDestin,$protocol);
+    my ($extra,$flags);
+    my @rline;
+
+    #print "PARSING: $line" if ($verbose eq 'Y');
+
+    $reason_skipped = "Does not contain ' -> '"; return 0 unless ( $line =~ / -> / );
+
+	# Is this any kind of packet filter log line?
+	if ($line_filter) { $reason_skipped = "Does not contain $line_filter"; return 0 unless ( $line =~ /$line_filter/ ) }
+
+	# Or maybe something undesirable that we don't want to see?
+	if ($line_exclude) { $reason_skipped = "Excluded because it contains $line_exclude"; return 0 if ( $line =~ /$line_exclude/ ) }
+
+	# Date is formatted like 25/06/2002
+	#                                                                                                                                                              Day   Month   Year     HH    MM    SS   undef   count                            
+    if (($day,$month,$year,$hour,$minute,$second,undef,$count,undef,undef,$action,$ipSource,$portSource,$ipDestin,$portDestin,$protocol,$extra) = ($line =~ m/^\s*(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+):(\d+)\.(\d+)\s+(\w*)\s+(\w+)\s+(\S+)\s+(\w+)\s+([\.\d]+),?(\d*)\s+\->\s+([\.\d]+),?(\d*)\s+\w+\s+(\w+)\s+(.*)/)) {; 
+	# Date is formated like Apr 25
+	#                                                                                                                                                Month              Day    HH    MM    SS  undef     count Action      SrcIP  SrcPrt          DstIP    DstPort      Prot   Extra
+#    } elsif (($month,$day,$hour,$minute,$second,$action,$ipSource,$portSource,$ipDestin,$portDestin,$protocol,$extra) =             ($line =~ m/^([A-Z][a-z]{2}) +(\d{1,2}) (\d+):(\d+):(\d+) +(.*) +([0-9.]*)\,(\d+) +\-> +([0-9.]*)\,(\d+) +\w+\s+(\w+)\s+(.*)/)) {; 
+    } elsif (($month,$day,$hour,$minute,$second,undef,$count,$action,$ipSource,$portSource,$ipDestin,$portDestin,$protocol,$extra) = ($line =~ m/^([A-Z][a-z]{2}) +(\d{1,2}) (\d+):(\d+):(\d+)(.*\.\d+) +(\d*).* +(.*) +([0-9.]*)\,?(\d*) +\-> +([0-9.]*)\,?(\d*) +\w+\s+(\w+)\s+(.*)/)) {; 
+		$month=$Month{$month};
+		$year=$this_year;
+		$year-- if ($month>$this_month);
+	} else {
+		$reason_skipped = "Can't parse this line.";
+		return 0;
+	}
+    # parse the count value
+    if ( $count ) {
+       $count =~ s/\D//g;	# toss away non-digit characters
+    } else {
+       $count = 1;
+    }
+
+    # uppercase the protocol field
+    $protocol = uc $protocol;
+
+    # split the extra field if TCP to get the flags and then remove the "-" from the flags
+    if ( $protocol eq "TCP" ) {
+       (undef,undef,undef,$flags)=split ' ',$extra;
+       $flags =~ s/-//g;
+	
+    } else {
+       $flags="";
+    }
+
+    # if the protocol is ICMP, get the type and place in ports fields
+	# PARSING: Apr 25 15:16:21 xxxxx ipmon[1699]: 15:16:20.933210                
+	# xl0 @0:1 b 200.1.2.3 -> 150.1.2.3 PR icmp len 20 60 icmp 8/0 IN
+
+    if ( $protocol eq "ICMP" ) {
+       ($portSource,$portDestin)=($extra =~ m/^\s*\w+\s+\d+\s+\d+\s+\w+\s+(\d+)\/(\d+)/);
+    }
+
+    $rline[0]=sprintf("%0.4d-%0.2d-%0.2d %0.2d:%0.2d:%0.2d %s",$year,$month,$day,$hour,$minute,$second,$tz);
+    $rline[1]=$userid;
+    $rline[2]=$count;
+    $rline[3]=$ipSource;
+    $rline[4]=$portSource;
+    $rline[5]=$ipDestin;
+    $rline[6]=$portDestin;
+    $rline[7]=$protocol;
+    $rline[8]=$flags;
+
+    return @rline;
+}

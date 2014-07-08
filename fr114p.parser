@@ -1,0 +1,56 @@
+#	DShield parser for Netgear FR114P and syslog, by John Gill, <jg@jgill.net>.
+#	The Netgear router defaults to saving logs in /var/log/messages, so set
+# 	'log=/var/log/messages' in dshield.cnf 
+#	If $line_filter is not set, 'Inbound Default'  will be used to filter.
+#	The syslog timestamp is used rather than the the Netgear one as 
+#	the router clock is much less accurate.  YMMV.
+my $PARSER_VERSION = "2005-09-28";
+
+
+
+sub parse {
+    my $line=shift;
+    my @rline;
+    
+    
+    if ($line_filter) {
+	    $reason_skipped = "Does not contain $line_filter"; return 0 unless ( $line =~ /$line_filter/ );
+    } 
+    else {
+	    $reason_skipped = "Does not contain 'Inbound Default'"; return 0 unless ( $line =~ /Inbound Default/ );
+    }
+
+     if ($line_exclude) { $reason_skipped = "Contains '$line_exclude'"; return 0 if ( $line =~ /$line_exclude/ ) }
+     
+     my ($month, $day, $hours, $minutes, $second, $year, $proto, $source, $dest , $sport);
+     
+     if ($line =~ /ICMP/){
+		($month, $day, $hours, $minutes, $second, $year, $proto, $source, $dest , $sport) = ($line =~
+		/([A-Z][a-z][a-z])\s(\d{1,2})\s(\d\d):(\d\d):(\d\d).*(200\d).*([A-Z][A-Z][A-Z]P).*Source:(\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}).*Destination:(\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}).*Type:(\d{1,2})/);
+		# $month            $day      $hours $minutes $second $year $proto                $source                                                          $dest                                     $sport
+		$dport = "";
+		}
+		
+	if ($line =~ /TCP|UDP/) {
+		($month, $day, $hours, $minutes, $second, $year, $proto, $source, $sport, $dest, $dport) = ($line =~
+		/([A-Z][a-z][a-z])\s(\d{1,2})\s(\d\d):(\d\d):(\d\d).*(200\d).*([A-Z][A-Z]P).*Source:(\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}),(\d{1,5}).*Destination:(\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}),(\d{1,5})/);
+		# $month            $day      $hours $minutes $second $year $proto                $source                               $sport                      $dest                                     $dport
+	}
+
+	
+
+my $date=sprintf("%04d-%02d-%02d %02d:%02d:%02d %s",$year,$Month{$month},$day,$hours,$minutes,$second,$tz);
+
+	$rline[0] = $date;
+	$rline[1] = $userid;
+	$rline[2] = "1";
+	$rline[3]= $source;
+	$rline[4] = $sport;
+	$rline[5] = $dest;
+	$rline[6] = $dport;
+	$rline[7] = $proto;
+	$rline[8] = "";
+
+    return @rline;
+ }
+

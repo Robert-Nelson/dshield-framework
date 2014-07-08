@@ -1,0 +1,100 @@
+# DShield ipchains parser
+#
+# ipchains defaults to saving logs in /var/logs/messages, so set
+# 'log=/var/log/messages' in dshield.cnf
+#
+# The parser defaults to only processing lines that contain 'input DENY'
+# If this isn't correct for you, then set the 'line_filter' variable in
+# dshield.cnf so it is a string that is contained in the log lines
+# that the parser should process.
+#
+my $PARSER_VERSION = "2002-03-28";
+
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regex that each line must match.  
+# $line_exclude Regex for lines we want to exclude.
+# $reason_skipped  Reason for skipping this record.
+
+sub parse {
+    my $line=shift;
+    my @rline;
+    #print "$line\n" if ($verbose eq 'Y'); 
+
+    # Is this any kind of packet filter log line?
+    if ($line_filter) {
+	    $reason_skipped = "Does not contain $line_filter"; return 0 unless ( $line =~ /$line_filter/ );
+    } else {
+	    $reason_skipped = "Does not contain 'input DENY'"; return 0 unless ( $line =~ /input DENY/ );
+    }
+
+    # Or maybe something undesirable that we don't want to see?
+    if ($line_exclude) { $reason_skipped = "Contains '$line_exclude'"; return 0 if ( $line =~ /$line_exclude/ ) }
+
+    my ($month,$day,$date,$time,$action,$proto,$source,$sourceport,$target,$targetport,$flags);
+    my $x;
+    $x=$_;
+    $_=$line;
+    ($month,$day,$time,$action,$proto,$source,$sourceport,$target,$targetport) = 
+	/(\S+)\s+(\d+)\s+(\d\d:\d\d:\d\d).+kernel: Packet log: \S+ (\S+) \S+ PROTO=(\d+) (\d+\.\d+\.\d+.\d+):(\d+) (\d+\.\d+\.\d+.\d+):(\d+)/i;
+#        Month  day      HH:MM:SS hostname                chain act. if      protocol     sourceip     s.port     targetip       t.port 
+
+#   Pulling out flags. I don't do this as part of the regex above to allow 
+#   for some variations...
+
+	($flags)=/T=\d+ (\w+)/;
+	$flags=~ s/SYN/S/;
+	$flags=~ s/ACK/A/;
+	$flags=~ s/RST/R/;
+	$flags=~ s/URG/U/;
+	#print "$month|$day|$time|$action|$proto|$source|$sourceport|$flags\n";
+
+	$month=$Month{$month};
+	if ($month <= $this_month ) {
+		$year = $this_year;
+	} else {
+		$year = $this_year - 1;
+	}
+
+	if ($proto =~ /\d/ ) { 
+		$proto=uc(getprotobynumber($proto));
+	} else {
+		$proto = "???";
+	}
+	$date = sprintf("%0.4d-%0.2d-%0.2d %s %s",$year,$month,$day,$time,$tz);
+
+    if ($day && $source && target && $proto) {     
+		$rline[0] = $date;
+		$rline[1] = $userid;
+		$rline[2] = "1";
+		$rline[3] = $source;
+		$rline[4] = $sourceport;
+		$rline[5] = $target;
+		$rline[6] = $targetport;
+		$rline[7] = $proto;
+		$rline[8] = $flags;
+    } else {
+		$reason_skipped = "Doesn't look like a firewall log that we can use";
+		return 0;
+    }
+    $_=$x;
+    return @rline;
+}

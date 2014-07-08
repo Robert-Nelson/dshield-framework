@@ -1,0 +1,110 @@
+# OpenBSD Packet Filter parser
+#
+# Packet Filter logs in a binary format.  Use tcpdump to convert to ASCII.
+# tcpdump -e -n -tttv -r pflog.binary > pf.log
+#
+# The OpenBSD Packet Filter HOWTO http://www.deadly.org/pf-howto/
+#
+my $PARSER_VERSION = "2008-02-19";
+
+# DShield Client Framework
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables already defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regexp that each line must match.  
+# $line_exclude Regexp for lines we want to exclude.
+# $reason_skipped Fill this with the reason a line isn't processed. 
+
+sub parse {
+    my $line = shift;
+
+    my ($day,$month,$year,$hour,$minute,$second,$count,$action,$ipSource,$portSource,$ipDestin,$portDestin,$protocol);
+    my ($extra,$flags);
+    my @rline;
+
+	# Default line filter.  Must contain this.
+    $reason_skipped = "Does not contain ' block in '"; return 0 unless ( $line =~ / block in / );
+
+	# Is this any kind of packet filter log line?
+	# $line_filter and $line_exclude are defined in dshield.cnf
+	if ($line_filter) { $reason_skipped = "Does not contain $line_filter"; return 0 unless ( $line =~ /$line_filter/ ) }
+
+	# Or maybe something undesirable that we don't want?
+	if ($line_exclude) { $reason_skipped = "Excluded because it contains $line_exclude"; return 0 if ( $line =~ /$line_exclude/ ) }
+
+	# Now we attempt to match the line with a regex.
+
+	# This regex should work for TCP and UDP.
+	# Apr 28 11:27:57.262651 rule 5/0(match): block in on tun0: 201.1.2.3.110 > 24.6.7.8.80: R [tcp sum ok]  180649940:180649940(0) ack 2761221649 win 0 (ttl 59, id 51314)
+	# Field description:                                                                                                         Month              Day    HH    MM    SS        Extra    SrcIP              SrcPrt        DstIP              DstPort    Flags      Protocol
+    if (($month,$day,$hour,$minute,$second,$extra,$ipSource,$portSource,$ipDestin,$portDestin,$flags,$protocol) = ($line =~ m/^([A-Z][a-z]{2}) +(\d{1,2}) (\d+):(\d+):(\d+)\.\d* +(.*): +(\d+\.\d+\.\d+\.\d+)\.(\d*) +\> +(\d+\.\d+\.\d+\.\d+)\.(\d*): +([A-Z]*) +\[(tcp|udp+)/ )) { 
+	
+	# Mar 19 13:03:30.523671 rule 1/(match) [uid 0, pid 6501] block in on fxp0: 190.38.113.48.1438 > 10.219.15.23.1434: udp 376 (ttl 34, id 52683, len 404)
+    } elsif (($month,$day,$hour,$minute,$second,$extra,$ipSource,$portSource,$ipDestin,$portDestin,$protocol) = ($line =~ m/^([A-Z][a-z]{2}) +(\d{1,2}) (\d+):(\d+):(\d+)\.\d* +(.*): +(\d+\.\d+\.\d+\.\d+)\.(\d*) +\> +(\d+\.\d+\.\d+\.\d+)\.(\d*): +(udp)/ )) { 
+	$flags="";
+
+	#Mar 19 13:21:17.008229 rule 1/(match) [uid 0, pid 6501] block in on fxp0: 190.219.149.19.2226 > 10.219.15.21.139: S 1564006479:15 64006479(0) win 53760 <mss 1420,nop,wscale 3,nop,nop,timestamp[|tcp]> (ttl 41, id 58135, len 64)
+    } elsif (($month,$day,$hour,$minute,$second,$extra,$ipSource,$portSource,$ipDestin,$portDestin,$flags) = ($line =~ m/^([A-Z][a-z]{2}) +(\d{1,2}) (\d+):(\d+):(\d+)\.\d* +(.*): +(\d+\.\d+\.\d+\.\d+)\.(\d*) +\> +(\d+\.\d+\.\d+\.\d+)\.(\d*): +([A-Z]*) +[1-9]/ )) { 
+	$protocol="tcp";
+
+
+	# For ICMP
+	# Apr 29 03:27:17.466144 rule 8/0(match): block in on tun0: 201.1.2.3 > 24.5.6.7: icmp: echo request (id:3 seq:51426) (ttl 124, id 39118)
+    } elsif (($month,$day,$hour,$minute,$second,$extra,$ipSource,$ipDestin,$protocol) = ($line =~ m/^([A-Z][a-z]{2}) +(\d{1,2}) (\d+):(\d+):(\d+)\.\d* +(.*): +(\d+\.\d+\.\d+\.\d+) +\> +(\d+\.\d+\.\d+\.\d+): +(\w+)/ )) {; 
+		$flags="";
+		$portSource="???";
+		$portDestin="???";
+	} else {
+		$reason_skipped = "Can't parse this line. $month";
+		return 0;
+	}
+
+	# Convert month from 'Apr' format to '04' format 
+	$month=$Month{$month};
+
+	# Year isn't in the log!  So guess what year it is.
+	$year=$this_year;
+	$year-- if ($month>$this_month);
+
+	$count="1";
+
+    # Uppercase the protocol field
+    $protocol = uc $protocol;
+	if ($protocol =~ m/TCP|UDP|ICMP/ ) {
+		# We are happy
+	} else {
+		# We are not happy
+		$reason_skipped = "This converter doesn't support $protocol";
+		return 0;
+	}
+
+	# Good as far as we know.  Now assemble the data into a DShield record
+	# Date time $tz
+    $rline[0]=sprintf("%0.4d-%0.2d-%0.2d %0.2d:%0.2d:%0.2d %s",$year,$month,$day,$hour,$minute,$second,$tz);
+    $rline[1]=$userid;
+    $rline[2]=$count;
+    $rline[3]=$ipSource;
+    $rline[4]=$portSource;
+    $rline[5]=$ipDestin;
+    $rline[6]=$portDestin;
+    $rline[7]=$protocol;
+    $rline[8]=$flags;
+
+    return @rline;
+}

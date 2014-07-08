@@ -1,0 +1,137 @@
+# DShield parser for Psonic Portsentry
+#
+# Based on Tim Rushing's tpfw parser for Tiny Personal Firewall
+#
+# You *must* define your own target IP in the dshield.cnf file, just like
+# is done for tpfw.
+#
+# Thanks to Joe Duncan for the original version of this parser.
+#
+# http://www.psionic.com/abacus/portsentry/
+#
+my $PARSER_VERSION = "2003-02-10";
+
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regex that each line must match.  
+# $line_exclude Regex for lines we want to exclude.
+
+sub parse {
+    my $line=shift;
+    my @rline;
+    my @date_parts;	
+    my @ips;
+    #print "PARSING: $line" if ($verbose eq 'Y');
+
+	# Is this any kind of packet filter log line?
+	if ($line_filter) { return 0 unless ( $line =~ /$line_filter/ ) }
+
+	# Or maybe something undesirable that we don't want to see?
+	if ($line_exclude) { return 0 if ( $line =~ /$line_exclude/ ) }
+
+    #return 0 unless ( $line =~ /Blocked/ );
+
+
+    my ($month,$day,$time,$target,$proto,$icmptype,$source,$sourceport,$targetport);
+    my $x;
+    $x=$_;
+    $_=$line;
+
+#   ($month,$day,$time,$target,$proto,$icmptype,$source,$sourceport,$targetport) =
+#  /(\S+)\s+(\d+)\s+(\d\d:\d\d:\d\d)\s+(\w+) Rule '.*': Blocked: In (\S+)\s*\[*(\d+)*]*.*,.* \[*(\d+\.\d+\.\d+.\d+):*(\d+)*]*->localhost:*(\d+)*/i;
+  # month  day     time               target                       protocol   icmp_type        source_ip            source_port          targe_port                                           
+
+# Jan 30 20:37:39 targetname portsentry[26654]: attackalert: Connect from host:
+# user20 3.netxxx.pa.xxx-xxx.net/10.173.84.203 to TCP port: 12345
+
+if (($month,$day,$time,$target,$source,$proto,$targetport) = ($line =~
+m/(\S+)\s+(\d+)\s+(\d\d:\d\d:\d\d)\s+(\w+).*attackalert:.*\/(\d+\.\d+\.\d+.\d+) to (.*) port: (\d+)/)) {;
+# month    day     time              target                source_ip             protocol source_port                                           
+
+} else {
+	$reason_skipped = "Can't parse this line.";
+	return 0;
+} 
+
+    # if icmp, then put type in source_port
+	$icmptype="";
+	$sourceport="???";
+
+	if ($proto eq 'ICMP') {
+		$sourceport = $icmptype;
+		$targetport = '???';
+	}
+
+    # now, we need to convert the target into an ip address using values read in from cnf file
+	if ($$target) {
+		$target = $$target;
+	} else {
+		$reason_skipped = "No ip address identified for target IP $target in dshield.cnf file."; 
+		return 0;
+	}
+
+	$month=$Month{$month};
+	if ($month <= $this_month ) {
+		$year = $this_year;
+	} else {
+		$year = $this_year - 1;
+	}
+
+	$date = sprintf("%0.4d-%0.2d-%0.2d %s %s",$year,$month,$day,$time,$tz);
+
+    if ($day && $source && $target && $proto) {     
+	$rline[0] = $date;
+	$rline[1] = $userid;
+	$rline[2] = "1";
+	$rline[3] = $source;
+	$rline[4] = $sourceport;
+	$rline[5] = $target;
+	$rline[6] = $targetport;
+	$rline[7] = $proto;
+	$rline[8] = $flags;
+    } else {
+		$reason_skipped = "Something is wrong with either day: $day, source,: $source, target: $target, or protocol: $proto"; 
+		return 0;
+    }
+    $_=$x;
+    return @rline;
+
+
+if (6 == 9 ) {
+# Old portsentry parser
+
+    my @parts=split(" ",$line);
+    my @date_parts=split('/',$parts[2]);
+    my @ips=split('/',$parts[5]);
+
+    $rline[0]=sprintf("%0.4d-%0.2d-%0.2d %s %s",$date_parts[2],$date_parts[0],$date_parts[1],$parts[3],$tz);
+    $rline[1]=$userid;
+    $rline[2]=1;
+    $rline[3]=$ips[0];
+    $rline[4]='???';
+    $rline[5]=$ips[1];
+    $rline[6]=$parts[7];
+    $rline[7]=$parts[8];	
+    $rline[8]='';
+
+    return @rline;
+}
+}

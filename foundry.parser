@@ -1,0 +1,233 @@
+# Foundry ServerIron log Parser
+# (http://www.foundrynet.com/products/webswitches/index.html)
+#
+# The ServerIron can be configured to log all denied packets to a syslog 
+# server.
+#
+# This parser handles the syslog lines, extracts the relevant entries and 
+# converts them into the proper format.
+# 
+# This may or may not work with other Foundry products, I have no way of
+# verifying that. Please notify me if you are using it with a product not  
+# listed here.
+#
+# ------------------------------------------------------------------------
+# Configuration:
+# 1) Install a syslog server.
+# 2) It would be a good idea to log the Foundry messages to a seperate
+#    logfile, fx:
+#    local5.*           /var/log/foundry/syslog.log
+#
+# 3) Point dshield.cnf at that logfile, fx:log=/var/log/foundry/syslog.log
+#
+# If you want to do a logrotate on the Foundry log and want to make sure
+# you get all entries, you could point the logfile
+# at "log=/var/foundry/syslog.log.1" instead and to the following in
+# your logrotate.conf:
+# /var/log/foundry/syslog.log {
+#    daily
+#    rotate 365
+#    postrotate
+#      /bin/kill -HUP `cat /var/run/syslogd.pid 2>/dev/null` 2>/dev/null || true
+#      /path/to/parser/foundry.pl 
+#    endscript
+# }
+#
+#
+# Note the rotate value, you might want something else ;)
+#
+# ------------------------------------------------------------------------
+# Foundry Configuration:
+# In your Foundry box, you need to do a few things:
+# 1) Set up logging. fx. like this where 1.2.3.4 is the ip of your syslog
+#    server:
+#    logging 1.2.3.4
+#    logging facility local5
+#
+# 2) Your filter list must end with a line like this:
+# 	access-list 100 deny ip any any log
+#   
+# Note that when the first line in your access-list is a "permit" line,
+# the Foundry box denies everything not permitted through the acess-list.
+# The line above makes it log any hits to that rule.
+# Also, when you need to add new lines to the access-list, you must first
+# remove the deny line mentioned about and re-insert it again.
+#
+# 2004-02-18 Discovered that the Foundry actually sometimes returns lines
+#            with other than '1 packets' so we now parse that too. 
+# 2004-02-17 Added tftp_port 69 in conversion table.
+# 2004-02-16 Optimized a few lines.
+# 2004-02-15 First version.
+# /Martin Jakobsen 
+#
+my $PARSER_VERSION = "2004-02-18";
+
+#
+#
+# Framework for parsing of the log line
+#
+# @rline - array to be returned holding the required values for Dshield
+#  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format
+#  $rline[1] - Dshield user ID
+#  $rline[2] - number of lines this log entry represents (normally 1)
+#  $rline[3] - source IP in dotted decimal format (x.x.x.x)
+#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[7] - protocol in uppercase
+#  $rline[8] - TCP flags (SFAPRU12)
+#
+# Global variables defined by calling routine
+# $this_year - Current year in YYYY format
+# $this_month - Current month in numerical format.  '1' for Jan.
+# @Month  Hash of three letter abgreviations for months.  
+# $tz - (i.e. -04:00 for EDT)
+# $userid - Dshield user ID
+# $line_filter  Regex that each line must match.  
+# $line_exclude Regex for lines we want to exclude.
+
+sub parse {
+ 
+ #
+ # Checking the current line to see if if contains what we need to continue.
+ #
+ if ($line_filter) {
+   $reason_skipped = "Does not contain '$line_filter`"; return 0 unless ( $line =~ /$line_filter/ )
+  }
+ 
+ 
+  #
+  # The Foundry switch reports back with names for some ports instead of values, so we have to convert them
+  # and this array helps us do just that. I found a list on their site:
+  # http://www.foundrynet.com/services/documentation/siug/ServerIron_Server_Load_Balancing.html
+  # so I assume these are the ports they will return as text instead of a port number.
+  # I noticed in the log that the "netbios-ns" in the docs, was replaced with
+  # a "netbios_ns" so I also assume that the description of the other ports also use underscore.
+  #
+      
+  my  %PortConversion = (
+  	"echo",7,
+  	"discard",9,
+  	"ftp",21,
+  	"ssh",22,
+  	"telnet",23,
+  	"smtp",25,
+  	"time",37,
+  	"tacacs",49,
+  	"dns",53,
+  	"bootps",67,
+  	"bootpc",68,
+  	"tftp",69,
+        "tftp_port",69,
+  	"http",80,
+  	"pop2",109,
+  	"110",110,
+  	"nntp",119,
+  	"ntp",123,
+  	"netbios_ns",137,
+  	"netbios_dgm",138,
+  	"imap4",143,
+  	"snmp",161,
+  	"snmptrap",162,
+  	"bgp",179,
+  	"dnsix",195,
+  	"ldap",389,
+  	"mobile_ip",434,
+  	"ssl",443,
+  	"talk",517,
+  	"rip",520,
+  	"rtsp",554,
+  	"mms",1755,
+  	"radius",1812,
+  	"radius_old",1645,
+  	"pnm",7070,
+  	"xing",1558,
+  	"vxstream1",12468,
+  	"vxstream2",12469
+      );
+      
+ #
+ # I did try to use the @Month that comes with the framework but the lack of "0" in front of months 1-9
+ # did cause all lines to be rejected.
+ #
+ 
+ my %MyMonth=("Jan" => "01",
+         "Feb" => "02",
+         "Mar" => "03",
+         "Apr" => "04",
+         "May" => "05",
+         "Jun" => "06",
+         "Jul" => "07",
+         "Aug" => "08",
+         "Sep" => "09",
+         "Oct" => "10",
+         "Nov" => "11",
+         "Dec" => "12");
+
+ 
+ # Splitting the log line.
+ @LogAtoms = split (" ",$line);
+
+ #
+ # Exiting if it was not a denied entry or we for some reason did not split the line correctly
+ # to something we can understand.
+ #
+ if ($LogAtoms[8] != "denied") {
+   $reason_skipped = "Not a denied entry or splitting of line failed"; 
+   return 0;
+  }
+ 
+ 
+ #
+ # No year is specified in log so we use the one given by the program.
+ # Also, the month are converted to a number using the array.
+ #
+ 
+ $LogDate 	= "$this_year-".$MyMonth{$LogAtoms[0]}."-$LogAtoms[1] $LogAtoms[2] $tz";
+ 
+
+ #
+ # Extracting source ip
+ #
+ $SrcPortBegin	= index($LogAtoms[10],"(");
+ $SourceIP 	= substr($LogAtoms[10],0,$SrcPortBegin);
+ 
+ #
+ # extracting the source port and converting it to a value if needed
+ #
+ $TmpSrcPort	= substr($LogAtoms[10], $SrcPortBegin+1 ,( index($LogAtoms[10],")") - $SrcPortBegin)-1);
+ $SourcePort 	= "";
+ $SourcePort	= $PortConversion{"$TmpSrcPort"};
+ if (!$SourcePort) {$SourcePort = $TmpSrcPort;};
+ 
+ #
+ # Extracting destination ip
+ #
+ $DestPortBegin = index($LogAtoms[15],"(");
+ $DestIP	= substr($LogAtoms[15],0,$DestPortBegin);
+ 
+ #
+ # extracting the destination port and converting it to a value if needed
+ #
+ $TmpDestPort	= substr($LogAtoms[15], $DestPortBegin+1 , index($LogAtoms[15],")") -$DestPortBegin-1);
+ $DestPort 	= "";
+ $DestPort	= $PortConversion{"$TmpDestPort"};
+ if (!$DestPort) {$DestPort = $TmpDestPort;};
+
+
+
+ $Protocol	= uc($LogAtoms[9]);
+ 
+
+ # Up and atom  
+ $rline[0] = $LogDate;
+ $rline[1] = $userid;
+ $rline[2] = $LogAtoms[16];
+ $rline[3] = $SourceIP;
+ $rline[4] = $SourcePort;
+ $rline[5] = $DestIP;
+ $rline[6] = $DestPort;
+ $rline[7] = $Protocol;
+ $rline[8] = "";
+ return @rline;
+}
