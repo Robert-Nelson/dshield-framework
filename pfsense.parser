@@ -3,16 +3,27 @@
 # Patched for pfSense pf logs by Klaus Lichtenwalder
 # (http://lists.sans.org/pipermail/list/2008-August/027270.html)
 # Patched version submitted by Raman Gupta
+# Rewritten for pfSense version 2.2 ny Robert Nelson
 #
-# Packet Filter logs in a binary format.  Use tcpdump to convert to ASCII.
-# tcpdump -e -n -tttv -r pflog.binary > pf.log
+# Retrieve the perl module Net::IP and extract the IP.pm file from p5-Net-IP-X.X.tbz into lib/Net/IP.pm
 #
-# The OpenBSD Packet Filter HOWTO http://www.deadly.org/pf-howto/
+# Edit dshield.cnf as needed
+# 	- change the include/exclude files' paths from /etc/ to ./
+# 	- set userid to your dshield submission id
+# 	- comment out the "log=/var/log/messages" line since stdin is used.
+#	- set sendmail=./pfsense_mailer.php
+#	- set whereto=MAILWRAPPER
 #
-my $PARSER_VERSION = "2008-10-12";# DShield Client Framework
+# Make the following changes to pfsense.pl
+# 	- Change the path to perl in the first line to /usr/local/bin/perl
+#
+#
+# clog /var/log/filter.log | ./pfsense_preprocessor.php | ./pfsense.pl -config=./dshield.cnf
+#
 
-# Beginning of pfsense Parser
-#
+use lib './lib';
+use Net::IP;
+
 # DShield Client Framework
 # Framework for parsing of the log line
 #
@@ -21,9 +32,9 @@ my $PARSER_VERSION = "2008-10-12";# DShield Client Framework
 #  $rline[1] - Dshield user ID
 #  $rline[2] - number of lines this log entry represents (normally 1)
 #  $rline[3] - source IP in dotted decimal format (x.x.x.x)
-#  $rline[4] - numeric source port for TCP/UDP or ithe ICMP code
+#  $rline[4] - numeric source port for TCP/UDP or the ICMP type
 #  $rline[5] - destination IP in dotted decimal format (x.x.x.x)
-#  $rline[6] - numeric destination port for TCP/UDP or the ICMP type
+#  $rline[6] - numeric destination port for TCP/UDP or the ICMP code
 #  $rline[7] - protocol in uppercase
 #  $rline[8] - TCP flags (SFAPRU12)
 #
@@ -38,14 +49,13 @@ my $PARSER_VERSION = "2008-10-12";# DShield Client Framework
 # $reason_skipped Fill this with the reason a line isn't processed. 
 
 sub parse {
-    my $line = shift;
+	my $line = shift;
 
-    my ($day,$month,$year,$hour,$minute,$second,$count,$action,$ipSource,$portSource,$ipDestin,$portDestin,$protocol);
-    my ($extra,$flags);
-    my @rline;
+	my ($day,$month,$year,$hour,$minute,$second,$count,$action,$iface,$protocol,$source,$ipSource,$portSource,$destin,$ipDestin,$portDestin,$protocol,$flags);
+	my @rline;
 
 	# Default line filter.  Must contain this.
-    $reason_skipped = "Does not contain ' block in '"; return 0 unless ( $line =~ / block in / );
+	$reason_skipped = "Does not contain ' block '"; return 0 unless ( $line =~ / block / );
 
 	# Is this any kind of packet filter log line?
 	# $line_filter and $line_exclude are defined in dshield.cnf
@@ -56,32 +66,40 @@ sub parse {
 
 	# Now we attempt to match the line with a regex.
 
-	# This regex should work for TCP and UDP.
-	# Apr 28 11:27:57.262651 rule 5/0(match): block in on tun0: 201.1.2.3.110 > 24.6.7.8.80: R [tcp sum ok]  180649940:180649940(0) ack 2761221649 win 0 (ttl 59, id 51314)
-	# Field description:                                                                                                         Month              Day    HH    MM    SS        Extra    SrcIP              SrcPrt        DstIP              DstPort    Flags      Protocol
-    if (($month,$day,$hour,$minute,$second,$extra, $protocol,$ipSource,$portSource,$ipDestin,$portDestin,$flags) = ($line =~ m/^([A-Z][a-z]{2}) +(\d{1,2}) (\d+):(\d+):(\d+) +(.*): (TCP|UDP) \(\d{1,2}\), length: \d+\) (\d+\.\d+\.\d+\.\d+)\.(\d*) +\> +(\d+\.\d+\.\d+\.\d+)\.(\d*): ([A-Z]*)?/ )) { 
-	$flags = '' if $protocol eq 'UDP';
-	#Aug 24 10:03:58 alix pf: 110. 682955 rule 402/0(match): block in on ng0: (tos 0x0, ttl  52, id 21033, offset 0, flags [DF], proto: TCP (6), length: 638) 192.251.226.205.9080 > 88.217.2.9.51328: FP 586:1172(586) ack 1 win 95 <nop,nop,timestamp 173275264[|tcp]>
+	# This regex should work for any protocol.
+	# Jul 11 06:32:13 block em0 TCP:FPA 192.168.1.1:48561 192.168.1.1:443
+	# Field description:
+	# Month Day HH:MM:SS Action Interface Protocol(:TCPFLAGS) SourceIP(:Port) DestinationIP(:Port)
+	if (($month,$day,$hour,$minute,$second,$action,$iface,$protocol,$source,$destin) = ($line =~ m/^([A-Z][a-z]{2}) +(\d{1,2}) (\d+):(\d+):(\d+) +(\S+) +(\S+) +(\S+) +([0-9a-fA-F:]+|(?:\d+\.\d+\.\d+\.\d+(?::\d+)?)) +([0-9a-fA-F:]+|(?:\d+\.\d+\.\d+\.\d+(?::\d+)?))$/ )) { 
+		$protocol = 'ICMP6' if ($protocol eq 'ICMPv6');
 
-    } elsif (($month,$day,$hour,$minute,$second,$extra,$ipSource,$portSource,$ipDestin,$portDestin,$flags,$protocol) = ($line =~ m/^([A-Z][a-z]{2}) +(\d{1,2}) (\d+):(\d+):(\d+)\.\d* +(.*): +(\d+\.\d+\.\d+\.\d+)\.(\d*) +\> +(\d+\.\d+\.\d+\.\d+)\.(\d*): +([A-Z]*) +\[(tcp|udp+)/ )) { 
-	
-	# Mar 19 13:03:30.523671 rule 1/(match) [uid 0, pid 6501] block in on fxp0: 190.38.113.48.1438 > 10.219.15.23.1434: udp 376 (ttl 34, id 52683, len 404)
-    } elsif (($month,$day,$hour,$minute,$second,$extra,$ipSource,$portSource,$ipDestin,$portDestin,$protocol) = ($line =~ m/^([A-Z][a-z]{2}) +(\d{1,2}) (\d+):(\d+):(\d+)\.\d* +(.*): +(\d+\.\d+\.\d+\.\d+)\.(\d*) +\> +(\d+\.\d+\.\d+\.\d+)\.(\d*): +(udp)/ )) { 
-	$flags="";
+		if ($protocol =~ m/^TCP:([A-Z]*)$/) {
+			$protocol = 'TCP';
+			$flags = $1;
+			if (index($flags, 'S') == -1) {
+				$reason_skipped = "TCP non-sync packet- $flags";
+				return 0;
+			}
+		} else {
+			$flags = '';
+		}
 
-	#Mar 19 13:21:17.008229 rule 1/(match) [uid 0, pid 6501] block in on fxp0: 190.219.149.19.2226 > 10.219.15.21.139: S 1564006479:15 64006479(0) win 53760 <mss 1420,nop,wscale 3,nop,nop,timestamp[|tcp]> (ttl 41, id 58135, len 64)
-    } elsif (($month,$day,$hour,$minute,$second,$extra,$ipSource,$portSource,$ipDestin,$portDestin,$flags) = ($line =~ m/^([A-Z][a-z]{2}) +(\d{1,2}) (\d+):(\d+):(\d+)\.\d* +(.*): +(\d+\.\d+\.\d+\.\d+)\.(\d*) +\> +(\d+\.\d+\.\d+\.\d+)\.(\d*): +([A-Z]*) +[1-9]/ )) { 
-	$protocol="tcp";
+		if ($protocol eq 'TCP' or $protocol eq 'UDP' or $protocol eq 'ICMP' or $protocol eq 'ICMP6') {
+			($ipSource, $portSource) = ($source =~ m/^(.*):([0-9]+)$/);
+			($ipDestin, $portDestin) = ($destin =~ m/^(.*):([0-9]+)$/);
+		} else {
+			($ipSource, $portSource) = ($source, '???');
+			($ipDestin, $portDestin) = ($destin, '???');
+		}
 
+		my $ip = Net::IP->new($ipSource);
 
-	# For ICMP
-	# Apr 29 03:27:17.466144 rule 8/0(match): block in on tun0: 201.1.2.3 > 24.5.6.7: icmp: echo request (id:3 seq:51426) (ttl 124, id 39118)
-    } elsif (($month,$day,$hour,$minute,$second,$extra,$ipSource,$ipDestin,$protocol) = ($line =~ m/^([A-Z][a-z]{2}) +(\d{1,2}) (\d+):(\d+):(\d+)\.\d* +(.*): +(\d+\.\d+\.\d+\.\d+) +\> +(\d+\.\d+\.\d+\.\d+): +(\w+)/ )) {; 
-		$flags="";
-		$portSource="???";
-		$portDestin="???";
+		if ($ip->iptype() ne 'PUBLIC' and $ip->iptype ne 'GLOBAL-UNICAST') {
+			$reason_skipped = "Private source IP address - $ipSource";
+			return 0;
+		}
 	} else {
-		$reason_skipped = "Can't parse this line. $month";
+		$reason_skipped = "Can't parse this line. $line";
 		return 0;
 	}
 
@@ -94,9 +112,7 @@ sub parse {
 
 	$count="1";
 
-    # Uppercase the protocol field
-    $protocol = uc $protocol;
-	if ($protocol =~ m/TCP|UDP|ICMP/ ) {
+	if ($protocol =~ m/TCP|UDP|ICMP6?/ ) {
 		# We are happy
 	} else {
 		# We are not happy
@@ -106,15 +122,15 @@ sub parse {
 
 	# Good as far as we know.  Now assemble the data into a DShield record
 	# Date time $tz
-    $rline[0]=sprintf("%0.4d-%0.2d-%0.2d %0.2d:%0.2d:%0.2d %s",$year,$month,$day,$hour,$minute,$second,$tz);
-    $rline[1]=$userid;
-    $rline[2]=$count;
-    $rline[3]=$ipSource;
-    $rline[4]=$portSource;
-    $rline[5]=$ipDestin;
-    $rline[6]=$portDestin;
-    $rline[7]=$protocol;
-    $rline[8]=$flags;
+	$rline[0]=sprintf("%0.4d-%0.2d-%0.2d %0.2d:%0.2d:%0.2d %s",$year,$month,$day,$hour,$minute,$second,$tz);
+	$rline[1]=$userid;
+	$rline[2]=$count;
+	$rline[3]=$ipSource;
+	$rline[4]=$portSource;
+	$rline[5]=$ipDestin;
+	$rline[6]=$portDestin;
+	$rline[7]=$protocol;
+	$rline[8]=$flags;
 
-    return @rline;
+	return @rline;
 }

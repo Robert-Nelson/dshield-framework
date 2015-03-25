@@ -27,6 +27,10 @@ to=report@dshield.org
 cc=
 bcc=
 
+#  The 'replyto' address is used by dshield for responses to submissions.
+
+replyto=
+
 # Name of the log file. This should be the syslog as this
 # client processes 'syslog' reports.  Unless your firewall logs go to 
 # a different file....
@@ -62,11 +66,14 @@ log=/var/log/messages
 
 sendmail=/usr/sbin/sendmail -oi -t
 
-# What to do with the output.  If defined as 'MAIL' then send the converted
-# log to the addresses defined above.  (i.e. normal DShield operation.)
-# But, if defined as a file, then will write the converted log, including
-# mail headers, to a file.  You would use this if sending as mail isn't what
-# you want to do.  The assumptuon would be that you'd "wrap" this script in
+# What to do with the output.
+# If defined as 'MAIL' then send the converted # log to the addresses defined 
+# above.  (i.e. normal DShield operation.)
+# If defined as 'MAILWRAPPER' then the above sendmail is assumed to be a program
+# or script that takes the options: -s subject -t to -c cc -b bcc -r replyto.
+# Otherwise it is assumed to be a filename and it will write the converted log, 
+# including mail headers, to a file.  You would use this if sending as mail isn't 
+# what you want to do.  The assumptuon would be that you'd "wrap" this script in
 # another script that would do something else with the converted file.
 # Possibly FTPing or SCPing it to a different machine that has a mail server.
 # Or for testing and debugging, so that you don't have to fool with mail until

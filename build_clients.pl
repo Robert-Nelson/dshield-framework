@@ -56,13 +56,13 @@ foreach ( readdir(DIR) ) {
 	print FILE "';\n\n";
 
 	# i.e., the intro from this instance of *.parser
-	print FILE $head;
+	print FILE $head."\n\n";
 
 	# framework.pl
 	print FILE $frame;
 
 	print FILE "\n# End of framework section.\n\n";
-	print FILE "\# Beginning of $version Parser\n\n";
+	print FILE "\n# Beginning of $version Parser\n\n";
 
 	# The rest of this instance of *.parser
 	print FILE $body;

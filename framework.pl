@@ -1,6 +1,6 @@
 # DShield Client Framework
 #
-my $FRAMEWORK_VERSION = "2002-04-25";
+my $FRAMEWORK_VERSION = "2014-07-08";
 
 # The idea of this framework is to establish a list of common
 # features and command line paramaters accross all clients.
@@ -193,6 +193,7 @@ $from='nobody@nowhere.com' unless $from;
 $to='report@dshield.org' unless $to;
 $cc='' unless $cc;
 $bcc='' unless $bcc;
+$replyto='' unless $replyto;
 $userid=0 unless $userid;
 $tz=tz_offset() unless $tz;
 $log="-" unless $log;
@@ -227,6 +228,7 @@ if ( $debug eq "Y" ) {
 	print "DEBUG: to=[$to]\n";
 	print "DEBUG: cc=[$cc]\n";
 	print "DEBUG: bcc=[$bcc]\n";
+	print "DEBUG: replyto=[$replyto]\n";
 	print "DEBUG: userid=[$userid]\n";
 	print "DEBUG: line_filter=[$line_filter]\n";
 	print "DEBUG: line_exclude=[$line_exclude]\n";
@@ -323,14 +325,12 @@ while (<LOGFILE>) {
 	$log_cnt++;
 	print center_string("Processing line $log_cnt", "-") . "\nPARSING: $line" if ( $verbose eq "Y" );
 
- if (6 == 6) {
 	if ($prev_dline) {
 		$reason_skipped="";
 	} else {
 		$reason_skipped="Previous line was not a valid firewall log";
 		#$prev_dline="";
 	}
- }
 
 	# $prev_dline will be non-NULL only if the previous line was a valid
 	# DShield log line.  Note the rule.  Any operation that skips a line
@@ -531,23 +531,32 @@ if ( $rotate eq "N") {
 # if the temporary file is not empty, send the contents as and e-mail
 unless ( -z $tmpfile ) {
 	if ( $verbose eq "Y" ) {
-      if ( $whereto eq "MAIL" ) {
+      if ( $whereto eq "MAIL" || $whereto eq "MAILWRAPPER") {
 		print "SENDING USING: $sendmail\n";
 		print "SENDING TO/FROM: $to / $from\n";
 	  } else {
 		print "WRITING OUTPUT TO: $whereto\n";
       }
 	}
-	if ($whereto eq "MAIL" ) {
-	    open (MAIL,"| $sendmail") or die "Can't access $sendmail for sending the e-mail\n";
+	if ($whereto eq "MAILWRAPPER" ) {
+	    my $sendcmd = "| $sendmail -s \"FORMAT $format USERID $userid TZ $tz VERSION $VERSION\" -t $to";
+	    $sendcmd .= " -c $cc" if $cc;
+	    $sendcmd .= " -b $bcc" if $bcc;
+	    $sendcmd .= " -r $replyto" if $replyto;
+	    open (MAIL,$sendcmd) or die "Can't access $sendmail for sending the e-mail\n";
 	} else {
-	    open (MAIL,"> $whereto") or die "Can't open $whereto for writing the output file.\n";
+		if ($whereto eq "MAIL" ) {
+			open (MAIL,"| $sendmail") or die "Can't access $sendmail for sending the e-mail\n";
+		} else {
+			open (MAIL,"> $whereto") or die "Can't open $whereto for writing the output file.\n";
+		}
+	    print MAIL "To: $to\n";
+	    print MAIL "Cc: $cc\n" if $cc;
+	    print MAIL "Bcc: $bcc\n" if $bcc;
+	    print MAIL "Reply-To: $replyto\n" if $replyto;
+	    print MAIL "From: $from\n";
+	    print MAIL "Subject: FORMAT $format USERID $userid TZ $tz VERSION $VERSION\n\n";
 	}	    
-	print MAIL "To: $to\n";
-	print MAIL "Cc: $cc\n" if $cc;
-	print MAIL "Bcc: $bcc\n" if $bcc;
-	print MAIL "From: $from\n";
-	print MAIL "Subject: FORMAT $format USERID $userid TZ $tz VERSION $VERSION\n\n";
 	open (TMPFILE,"$tmpfile") || die ("Can't open temp file $tmpfile for reading\n");
 	foreach (<TMPFILE>) {
 		print MAIL $_;
@@ -654,7 +663,7 @@ sub validate_dshield {
 #	if ( $line =~ /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{2}:?\d{2}\t\d+\t\d+\t[0-9.]{7,15}\t\d+\t[0-9.]{7,15}\t\d+\t[0-9TCPIMPUD\?]{0,4}\t?[12UPFSAR]{0,6}$/ ) {
     # Also allow "???" for protocol
     #                      Date           Time               TZ           ID   Cnt    Src IP        SPrt        Target IP     TPrt         Protocol            Flags
-	if ( $line =~ /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{2}:?\d{2}\t\d+\t\d+\t[0-9.]{7,15}\t\d+|\?\?\?\t[0-9.]{7,15}\t\d+|\?\?\?\t[0-9TCPIMPUD\?]{0,4}\t?[12UPFSAR]{0,8}$/ ) {
+	if ( $line =~ /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{2}:?\d{2}\t\d+\t\d+\t([0-9a-fA-F:]+|[0-9.]{7,15})\t\d+|\?\?\?\t([0-9a-fA-F:]+|[0-9.]{7,15})\t\d+|\?\?\?\t[0-9TCPIMPUD\?]{0,4}\t?[12UPFSAR]{0,8}$/ ) {
 		#talky_validate() validates a little tougher, but takes time to run....
 		#return talky_validate($line);
 		return 1;
