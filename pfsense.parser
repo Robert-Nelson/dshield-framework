@@ -5,10 +5,10 @@
 # Patched version submitted by Raman Gupta
 # Rewritten for pfSense version 2.2 ny Robert Nelson
 #
-# Retrieve the perl module Net::IP and extract the IP.pm file from p5-Net-IP-X.X.tbz into lib/Net/IP.pm
+# Install the perl module p5-Net-IP.
 #
 # Edit dshield.cnf as needed
-# 	- change the include/exclude files' paths from /etc/ to ./
+# 	- change the include/exclude files' paths from /etc/ to /usr/local/etc/
 # 	- set userid to your dshield submission id
 # 	- comment out the "log=/var/log/messages" line since stdin is used.
 #	- set sendmail=./pfsense_mailer.php
@@ -21,7 +21,6 @@
 # clog /var/log/filter.log | ./pfsense_preprocessor.php | ./pfsense.pl -config=./dshield.cnf
 #
 
-use lib './lib';
 use Net::IP;
 
 # DShield Client Framework
