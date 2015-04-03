@@ -153,8 +153,8 @@ $config="/etc/dshield.cnf" unless $config;
 
 $verbose="N" unless $verbose;
 $debug="N" unless $debug;
-print center_string("Variable initialization","=") . "\n"  if ($debug eq "Y" );
-print "CONFIGURATION FILE: [$config]\n" if ( $verbose eq "Y" );
+print STDERR center_string("Variable initialization","=") . "\n"  if ($debug eq "Y" );
+print STDERR "CONFIGURATION FILE: [$config]\n" if ( $verbose eq "Y" );
 
 # if -config= is specific on the command line, or default exists, then
 #  open the config file
@@ -168,7 +168,7 @@ if ( -f $config ) {
 
 			# skip blank lines
 			next if ( /^\s*$/ );
-			#print "$_\n";
+			#print STDERR "$_\n";
 
 			# split the line into variable and value
 			($name,$value)=split("=");
@@ -182,7 +182,7 @@ if ( -f $config ) {
 			# make the variable lowercase
 			$name=lc($name);
 
-			#print "DEBUG: configuration file value - $name=[$value]\n" if ($debug eq "Y" );
+			#print STDERR "DEBUG: configuration file value - $name=[$value]\n" if ($debug eq "Y" );
 			$$name=$value;
 		}
 	}
@@ -216,40 +216,40 @@ $whereto="MAIL" unless $whereto;
 # turn on verbose if debug is enabled
 $verbose="Y" if ( $debug eq "Y" );
 if ( $debug eq "Y" ) {
-	print center_string("Variable initialization", "=") . "\n";
-	print "DEBUG: FRAMEWORK_VERSION=[$FRAMEWORK_VERSION]\n";
-	print "DEBUG: PARSER_VERSION=[$PARSER_VERSION]\n";
-	print "DEBUG: PARSER=[$PARSER]\n";
-	print "DEBUG: VERSION=[$VERSION]\n";
-	print "DEBUG: format=[$format]\n";
-	print "DEBUG: upper_date=[$upper_date]\n";
-	print "DEBUG: lower_date=[$lower_date]\n";
-	print "DEBUG: whereto=[$whereto]\n";
-	print "DEBUG: from=[$from]\n";
-	print "DEBUG: to=[$to]\n";
-	print "DEBUG: cc=[$cc]\n";
-	print "DEBUG: bcc=[$bcc]\n";
-	print "DEBUG: replyto=[$replyto]\n";
-	print "DEBUG: userid=[$userid]\n";
-	print "DEBUG: line_filter=[$line_filter]\n";
-	print "DEBUG: line_exclude=[$line_exclude]\n";
-	print "DEBUG: this_year=[$this_year]\n";
-	print "DEBUG: this_month=[$this_month]\n";
-	print "DEBUG: tz=[$tz]\n";
-	print "DEBUG: log=[$log]\n";
-	print "DEBUG: verbose=[$verbose]\n";
-	print "DEBUG: sendmail=[$sendmail]\n";
-	print "DEBUG: rotate=[$rotate]\n";
-	print "DEBUG: linecnt=[$linecnt]\n";
-	print "DEBUG: obfus=[$obfus]\n";
-	print "DEBUG: tmpfile=[$tmpfile]\n";
-	print "DEBUG: source_exclude=[$source_exclude]\n";
-	print "DEBUG: target_exclude=[$target_exclude]\n";
-	print "DEBUG: source_port_exclude=[$source_port_exclude]\n";
-	print "DEBUG: target_port_exclude=[$target_port_exclude]\n";
+	print STDERR center_string("Variable initialization", "=") . "\n";
+	print STDERR "DEBUG: FRAMEWORK_VERSION=[$FRAMEWORK_VERSION]\n";
+	print STDERR "DEBUG: PARSER_VERSION=[$PARSER_VERSION]\n";
+	print STDERR "DEBUG: PARSER=[$PARSER]\n";
+	print STDERR "DEBUG: VERSION=[$VERSION]\n";
+	print STDERR "DEBUG: format=[$format]\n";
+	print STDERR "DEBUG: upper_date=[$upper_date]\n";
+	print STDERR "DEBUG: lower_date=[$lower_date]\n";
+	print STDERR "DEBUG: whereto=[$whereto]\n";
+	print STDERR "DEBUG: from=[$from]\n";
+	print STDERR "DEBUG: to=[$to]\n";
+	print STDERR "DEBUG: cc=[$cc]\n";
+	print STDERR "DEBUG: bcc=[$bcc]\n";
+	print STDERR "DEBUG: replyto=[$replyto]\n";
+	print STDERR "DEBUG: userid=[$userid]\n";
+	print STDERR "DEBUG: line_filter=[$line_filter]\n";
+	print STDERR "DEBUG: line_exclude=[$line_exclude]\n";
+	print STDERR "DEBUG: this_year=[$this_year]\n";
+	print STDERR "DEBUG: this_month=[$this_month]\n";
+	print STDERR "DEBUG: tz=[$tz]\n";
+	print STDERR "DEBUG: log=[$log]\n";
+	print STDERR "DEBUG: verbose=[$verbose]\n";
+	print STDERR "DEBUG: sendmail=[$sendmail]\n";
+	print STDERR "DEBUG: rotate=[$rotate]\n";
+	print STDERR "DEBUG: linecnt=[$linecnt]\n";
+	print STDERR "DEBUG: obfus=[$obfus]\n";
+	print STDERR "DEBUG: tmpfile=[$tmpfile]\n";
+	print STDERR "DEBUG: source_exclude=[$source_exclude]\n";
+	print STDERR "DEBUG: target_exclude=[$target_exclude]\n";
+	print STDERR "DEBUG: source_port_exclude=[$source_port_exclude]\n";
+	print STDERR "DEBUG: target_port_exclude=[$target_port_exclude]\n";
 }
 
-print center_string("Exclusions file initialization", "=") . "\n"  if ($debug eq "Y" );
+print STDERR center_string("Exclusions file initialization", "=") . "\n"  if ($debug eq "Y" );
 
 my (@src_exc_lo, @src_exc_hi, @tar_exc_lo, @tar_exc_hi);
 
@@ -268,17 +268,17 @@ load_exclude($source_port_exclude, \@src_port_exc_lo, \@src_port_exc_hi, "0");
 load_exclude($target_port_exclude, \@tar_port_exc_lo, \@tar_port_exc_hi, "0");
 
 if ( $debug eq "Y" ) {
-	print "DEBUG: Source Exclude IPs:\n";
+	print STDERR "DEBUG: Source Exclude IPs:\n";
 	print_exclude(\@src_exc_lo, \@src_exc_hi);
-	print "DEBUG: Target Exclude IPs:\n";
+	print STDERR "DEBUG: Target Exclude IPs:\n";
 	print_exclude(\@tar_exc_lo, \@tar_exc_hi);
-	print "DEBUG: Source Exclude Ports:\n";
+	print STDERR "DEBUG: Source Exclude Ports:\n";
 	print_exclude(\@src_port_exc_lo, \@src_port_exc_hi);
-	print "DEBUG: Target Exclude Ports:\n";
+	print STDERR "DEBUG: Target Exclude Ports:\n";
 	print_exclude(\@tar_port_exc_lo, \@tar_port_exc_hi);
 }
 
-print center_string("Other file initialization", "=") . "\n"  if ($debug eq "Y" );
+print STDERR center_string("Other file initialization", "=") . "\n"  if ($debug eq "Y" );
 
 # if the log input is not from STDIN, check for the log file
 if ( $log ne "-") {
@@ -287,26 +287,26 @@ if ( $log ne "-") {
 
 # if rotate is "N", then use the date as the point to start
 if ($rotate eq "N") {
-	print "DEBUG: Opening time stamp file $linecnt\n" if ($debug eq "Y");
+	print STDERR "DEBUG: Opening time stamp file $linecnt\n" if ($debug eq "Y");
 	if ( -f $linecnt ) { 
 		open (LINECOUNT,$linecnt) || die "Can't open line count file $linecnt\n";
 		chomp ($line_count = <LINECOUNT>);
 		close LINECOUNT;
-		print "DEBUG: Will only submit log lines later than ", convert_from_timestring($line_count), " (from previous session.)\n" if ($debug eq "Y");
+		print STDERR "DEBUG: Will only submit log lines later than ", convert_from_timestring($line_count), " (from previous session.)\n" if ($debug eq "Y");
 	} else {
-		print "DEBUG: Time stamp file $linecnt does not exist.  Will send all log lines.\n" if ($debug eq "Y");
+		print STDERR "DEBUG: Time stamp file $linecnt does not exist.  Will send all log lines.\n" if ($debug eq "Y");
 	}
 }
 
 # open the log file for reading
-print "DEBUG: opening $log for reading\n" if ( $debug eq "Y" );
+print STDERR "DEBUG: opening $log for reading\n" if ( $debug eq "Y" );
 open (LOGFILE,$log) || die ("Can't open $log for reading\n");
 
 # open the file holding the valid processed line for writing
-print "DEBUG: opening $tmpfile for writing\n" if ( $debug eq "Y" );
+print STDERR "DEBUG: opening $tmpfile for writing\n" if ( $debug eq "Y" );
 open (TMPFILE,"> $tmpfile") || die ("Can't open temp file $tmpfile for writing\n"); 
 
-print center_string("Processing log file", "=") . "\n"  if ($verbose eq "Y" );
+print STDERR center_string("Processing log file", "=") . "\n"  if ($verbose eq "Y" );
 
 # loop through the log file
 #foreach $line (<LOGFILE>) {
@@ -324,7 +324,7 @@ while (<LOGFILE>) {
 	# send the log line to the parser
 
 	$log_cnt++;
-	print center_string("Processing line $log_cnt", "-") . "\nPARSING: $line" if ( $verbose eq "Y" );
+	print STDERR center_string("Processing line $log_cnt", "-") . "\nPARSING: $line" if ( $verbose eq "Y" );
 
 	if ($prev_dline) {
 		$reason_skipped="";
@@ -338,7 +338,7 @@ while (<LOGFILE>) {
 	# must also clear $prev_dline.
 	if ( $prev_dline && $line =~ /last message repeated (\d+) time/ ) {
 		chomp($line); 
-		printf "$1 REPEATED LINE%s.\n", ($1 == 1) ? "" : "S" if ( $verbose eq "Y" );
+		printf STDERR "$1 REPEATED LINE%s.\n", ($1 == 1) ? "" : "S" if ( $verbose eq "Y" );
 		if ($format ne "DSHIELD" ) { 
 			# Native format.  Print out however many of the native logs,
 			# because we don't know how to set the count in
@@ -346,7 +346,7 @@ while (<LOGFILE>) {
 			$dshield = $prev_nline; chomp($dshield); 
 			for ( $i = 0; $i < $1; $i++ ) {
 				print TMPFILE "$dshield\n";
-				print "WRITTEN: $dshield\n" if ( $verbose eq "Y" );
+				print STDERR "WRITTEN: $dshield\n" if ( $verbose eq "Y" );
 				$ship_cnt++;
 			}
 		} else {
@@ -355,7 +355,7 @@ while (<LOGFILE>) {
 			$dshield_array[2] = $1;
 			$dshield = join("\t",@dshield_array);
 			print TMPFILE "$dshield\n";
-			print "WRITTEN: $dshield\n" if ( $verbose eq "Y" );
+			print STDERR "WRITTEN: $dshield\n" if ( $verbose eq "Y" );
 			$ship_cnt++;
 		}
 		next;
@@ -366,9 +366,9 @@ while (<LOGFILE>) {
 			# We flunked.
 			if ( $verbose eq "Y" ) {
 				if ( $reason_skipped ) {
-					print "SKIPPING: $reason_skipped\n";
+					print STDERR "SKIPPING: $reason_skipped\n";
 				} else {
-					print "SKIPPING: $line" 
+					print STDERR "SKIPPING: $line" 
 				}
 			}
 			$bad_cnt++;
@@ -382,8 +382,8 @@ while (<LOGFILE>) {
 	$logtime = convert_to_timestring($dshield_array[0]);
 	if ( $logtime < $line_count ) {
 		$dshield = join("\t",@dshield_array);
-		print "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
-		print "SKIPPING: $dshield_array[0] is too early\n" if ( $verbose eq "Y" );
+		print STDERR "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
+		print STDERR "SKIPPING: $dshield_array[0] is too early\n" if ( $verbose eq "Y" );
 		$date_exc_cnt++;
 		$prev_dline=""; $prev_nline="";
 		next;
@@ -392,8 +392,8 @@ while (<LOGFILE>) {
 	# Reject if date is in the future (Bad date conversion?)
 	if ( $logtime > $upper_date ) {
 		$dshield = join("\t",@dshield_array);
-		print "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
-		print "SKIPPING: $dshield_array[0] is too far in the future\n" if ( $verbose eq "Y" );
+		print STDERR "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
+		print STDERR "SKIPPING: $dshield_array[0] is too far in the future\n" if ( $verbose eq "Y" );
 		$date_exc_cnt++;
 		$prev_dline=""; $prev_nline="";
 		next;
@@ -402,8 +402,8 @@ while (<LOGFILE>) {
 	# Reject if date is too old.
 	if ( $logtime < $lower_date ) {
 		$dshield = join("\t",@dshield_array);
-		print "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
-		print "SKIPPING: $dshield_array[0] is too far in the past\n" if ( $verbose eq "Y" );
+		print STDERR "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
+		print STDERR "SKIPPING: $dshield_array[0] is too far in the past\n" if ( $verbose eq "Y" );
 		$date_exc_cnt++;
 		$prev_dline=""; $prev_nline="";
 		next;
@@ -416,8 +416,8 @@ while (<LOGFILE>) {
 	# Now test to see if IPs or ports are to be excluded
 	if (test_IP_exclude(\@src_exc_lo, \@src_exc_hi, padip($dshield_array[3]))) {
 		$dshield = join("\t",@dshield_array);
-		print "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
-		print "SOURCE IP EXCLUDED: $dshield_array[3]\n" if ( $verbose eq "Y" );
+		print STDERR "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
+		print STDERR "SOURCE IP EXCLUDED: $dshield_array[3]\n" if ( $verbose eq "Y" );
 		$src_exc_cnt++;
 		$prev_dline=""; $prev_nline="";
 		next;
@@ -425,8 +425,8 @@ while (<LOGFILE>) {
 
 	if (test_IP_exclude(\@tar_exc_lo, \@tar_exc_hi, padip($dshield_array[5]))) {
 		$dshield = join("\t",@dshield_array);
-		print "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
-		print "TARGET IP EXCLUDED: $dshield_array[5]\n" if ( $verbose eq "Y" );
+		print STDERR "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
+		print STDERR "TARGET IP EXCLUDED: $dshield_array[5]\n" if ( $verbose eq "Y" );
 		$tar_exc_cnt++;
 		$prev_dline=""; $prev_nline="";
 		next;
@@ -434,8 +434,8 @@ while (<LOGFILE>) {
 
 	if (test_exclude(\@src_port_exc_lo, \@src_port_exc_hi, $dshield_array[4])) {
 		$dshield = join("\t",@dshield_array);
-		print "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
-		print "SOURCE PORT EXCLUDED: $dshield_array[4]\n" if ( $verbose eq "Y" );
+		print STDERR "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
+		print STDERR "SOURCE PORT EXCLUDED: $dshield_array[4]\n" if ( $verbose eq "Y" );
 		$src_port_exc_cnt++;
 		$prev_dline=""; $prev_nline="";
 		next;
@@ -443,8 +443,8 @@ while (<LOGFILE>) {
 
 	if (test_exclude(\@tar_port_exc_lo, \@tar_port_exc_hi, $dshield_array[6])) {
 		$dshield = join("\t",@dshield_array);
-		print "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
-		print "TARGET PORT EXCLUDED: $dshield_array[6]\n" if ( $verbose eq "Y" );
+		print STDERR "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
+		print STDERR "TARGET PORT EXCLUDED: $dshield_array[6]\n" if ( $verbose eq "Y" );
 		$tar_port_exc_cnt++;
 		$prev_dline=""; $prev_nline="";
 		next;
@@ -461,37 +461,37 @@ while (<LOGFILE>) {
 		# Now search/replace in the original native line
 		$line =~ s/$s/$s1/eg;
 		chomp($line);
-		print "OBFUSCATE: target IP $s changed to $s1\n" if ( $verbose eq "Y" );
+		print STDERR "OBFUSCATE: target IP $s changed to $s1\n" if ( $verbose eq "Y" );
 	}
 
 	# join the array elements into one line, tab separated
 	$dshield = join("\t",@dshield_array);
-	print "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
+	print STDERR "PARSE RESULT:", join("|",@dshield_array) ,"\n" if ( $verbose eq "Y" );
 
 	# if the line is valid, output to temp file
 	if (validate_dshield($dshield) ) {
 		# Send the native log line, if not DSHIELD format
 		if ($format ne "DSHIELD" ) { $dshield = $line; chomp($dshield);}
 		print TMPFILE "$dshield\n";
-		print "WRITTEN: $dshield\n" if ( $verbose eq "Y" );
+		print STDERR "WRITTEN: $dshield\n" if ( $verbose eq "Y" );
 		$ship_cnt++;
 		$prev_dline = $dshield; $prev_nline = $line;
 	} else {
-		print "NOT WRITTEN\n" if ( $verbose eq "Y" );
+		print STDERR "NOT WRITTEN\n" if ( $verbose eq "Y" );
 		$bad_cnt++;
 		$prev_dline=""; $prev_nline="";
 	}
 }
 
-#print "=" x 79 , "\n" if ( $verbose eq "Y" );
-print center_string("Clean-up processing", "=") . "\n"  if ($verbose eq "Y" );
+#print STDERR "=" x 79 , "\n" if ( $verbose eq "Y" );
+print STDERR center_string("Clean-up processing", "=") . "\n"  if ($verbose eq "Y" );
 
 close LOGFILE;
 close TMPFILE;
 
 # if rotate is specified as "Y" and the input is not from STDIN, rotate
 if ( $rotate eq "Y" && $log ne "-" ) {
-	print "DEBUG: rotating $log to $log.bak\n" if ( $debug eq "Y" );
+	print STDERR "DEBUG: rotating $log to $log.bak\n" if ( $debug eq "Y" );
 	open LOGFILE,$log || die "Can't open $log for reading\n";
 	open LOGROTATE,">$log.bak" || die "Can't open $log.bak for writing\n";
 	while ( <LOGFILE> ) {
@@ -506,7 +506,7 @@ if ( $rotate eq "Y" && $log ne "-" ) {
 
 # if the rotate is append and the input is not STDIN, append the data
 if ( $rotate eq "A" && $log ne "-" ) {
-	print "DEBUG: appending $log to $log.bak\n" if ( $debug eq "Y" );
+	print STDERR "DEBUG: appending $log to $log.bak\n" if ( $debug eq "Y" );
 	open LOGFILE,$log || die "Can't open $log for reading\n";
 	open LOGAPPEND,">>$log.bak" || die "Can't open $log.bak for appending\n";
 	while ( <LOGFILE> ) {
@@ -523,27 +523,29 @@ if ( $rotate eq "A" && $log ne "-" ) {
 if ( $rotate eq "N") {
 	$timestamp++;
 	if ($line_count > $timestamp ) { $timestamp = $line_count; }
-	print "DEBUG: updating timestamp file $linecnt (", convert_from_timestring($timestamp), ")\n" if ( $debug eq "Y" );
+	print STDERR "DEBUG: updating timestamp file $linecnt (", convert_from_timestring($timestamp), ")\n" if ( $debug eq "Y" );
 	open (LINECOUNT,"> $linecnt") || die "Can't open line count file for writing $linecnt\n";
 	print LINECOUNT $timestamp;
 	close LINECOUNT;
 }
 
-# if the temporary file is not empty, send the contents as and e-mail
+# if the temporary file is not empty, send the contents as an e-mail
 unless ( -z $tmpfile ) {
 	if ( $verbose eq "Y" ) {
       if ( $whereto eq "MAIL" ) {
-		print "SENDING USING: $sendmail\n";
-		print "SENDING TO/FROM: $to / $from\n";
+		print STDERR "SENDING USING: $sendmail\n";
+		print STDERR "SENDING TO/FROM: $to / $from\n";
 	  } else {
-		print "WRITING OUTPUT TO: $whereto\n";
+		print STDERR "WRITING OUTPUT TO: $whereto\n";
       }
 	}
 	if ($whereto eq "MAIL" ) {
 	    open (MAIL,"| $sendmail") or die "Can't access $sendmail for sending the e-mail\n";
+	} elsif ($whereto eq "-") {
+	    *MAIL = *STDOUT;
 	} else {
 	    open (MAIL,"> $whereto") or die "Can't open $whereto for writing the output file.\n";
-	}	    
+	}
 	print MAIL "To: $to\n";
 	print MAIL "Cc: $cc\n" if $cc;
 	print MAIL "Bcc: $bcc\n" if $bcc;
@@ -557,28 +559,30 @@ unless ( -z $tmpfile ) {
 	close TMPFILE; 
 
 	# politely end the mail session
-	close MAIL;
+	if ($whereto ne "-") {
+		close MAIL;
+	}
 } else {
-	print "WARNING: $tmpfile is empty.  Not sending any mail.\n" if ( $verbose eq "Y" );
+	print STDERR "WARNING: $tmpfile is empty.  Not sending any mail.\n" if ( $verbose eq "Y" );
 }
 
 # remove the temporary file
 if ( -f $tmpfile ) {
-	print "DEBUG: deleting $tmpfile\n" if ( $debug eq "Y" );
+	print STDERR "DEBUG: deleting $tmpfile\n" if ( $debug eq "Y" );
 	unlink ($tmpfile);
 }
 
 if ($verbose eq "Y" ) {
-	print center_string("Totals", "=") . "\n";
-	#print "-" x 79 , "\n";
-	printf "Wrote %d valid log lines\n", $ship_cnt;
-	printf "Excluded %d invalid (unparsable for some reason) lines\n",$bad_cnt;
-	printf "Excluded %d lines that were too early\n", $date_exc_cnt;
-	printf "Excluded %d source IP filtered lines\n", $src_exc_cnt;
-	printf "Excluded %d target IP filtered lines\n", $tar_exc_cnt;
-	printf "Excluded %d source Port filtered lines\n", $src_port_exc_cnt;
-	printf "Excluded %d target Port filtered lines\n", $tar_port_exc_cnt;
-	print center_string("All Done", "=") . "\n";
+	print STDERR center_string("Totals", "=") . "\n";
+	#print STDERR "-" x 79 , "\n";
+	printf STDERR "Wrote %d valid log lines\n", $ship_cnt;
+	printf STDERR "Excluded %d invalid (unparsable for some reason) lines\n",$bad_cnt;
+	printf STDERR "Excluded %d lines that were too early\n", $date_exc_cnt;
+	printf STDERR "Excluded %d source IP filtered lines\n", $src_exc_cnt;
+	printf STDERR "Excluded %d target IP filtered lines\n", $tar_exc_cnt;
+	printf STDERR "Excluded %d source Port filtered lines\n", $src_port_exc_cnt;
+	printf STDERR "Excluded %d target Port filtered lines\n", $tar_port_exc_cnt;
+	print STDERR center_string("All Done", "=") . "\n";
 }
 
 exit 0;
@@ -614,13 +618,13 @@ sub tz_offset {
 		+ $l_hour - $g_hour ) * 100
 		+ $l_min - $g_min;
 
-	print center_string("Calculating Time Zone", "=") . "\n"  if ($debug eq "Y" );
+	print STDERR center_string("Calculating Time Zone", "=") . "\n"  if ($debug eq "Y" );
 
 	my $return = sprintf ("%+0.4d",$hhmm);	# format used by RFCs 821/822/2821/2822 
-	print "DEBUG: calculated RFC 821 based tz = $return\n" if ( $debug eq "Y" );
+	print STDERR "DEBUG: calculated RFC 821 based tz = $return\n" if ( $debug eq "Y" );
 
 	$return = sprintf ("%s:%s",substr ($return,0,-2),substr ($return,-2,2)); # dshield
-	print "DEBUG: calculated tz = $return\n" if ( $debug eq "Y" );
+	print STDERR "DEBUG: calculated tz = $return\n" if ( $debug eq "Y" );
 
 	$return;
 } 
@@ -661,7 +665,7 @@ sub validate_dshield {
 		#return talky_validate($line);
 		return 1;
 	} else {
-		print "INVALID: $line\n";
+		print STDERR "INVALID: $line\n";
 		talky_validate($line);
 		return 0;
 	}
@@ -674,60 +678,60 @@ sub talky_validate {
 
 	@t = split ("\t", $line);
 	if ($#t < 7 ) {
-		print "\tINVALID: Not enough fields $#t\n";
+		print STDERR "\tINVALID: Not enough fields $#t\n";
 		return 0;
 	}
 
 	# Date/Time/TZ  YYYY-DD-MM HH:MM:SS [+-]HH:SS
 	if ( $t[0] !~ /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{2}:?\d{2}/ ) {
-		print "\tInvalid date/time: $t[0]\n";
+		print STDERR "\tInvalid date/time: $t[0]\n";
 		$f = "0";
 	}	
 	# User ID
 	if ( $t[1] !~ /^\d+/ ) {
-		print "\tInvalid User ID: $t[1]\n";
+		print STDERR "\tInvalid User ID: $t[1]\n";
 		$f = "0";
 	}	
 	# Count
 	if ( $t[2] !~ /^\d+$/ ) {
-		print "\tInvalid count: $t[2]\n";
+		print STDERR "\tInvalid count: $t[2]\n";
 		$f = "0";
 	}	
 	# Source IP
 	#if ( $t[3] !~ /[0-9.]{7,15}/ ) {
 	if ( $t[3] !~ /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/ ) {
-		print "\tInvalid source IP: $t[3]\n";
+		print STDERR "\tInvalid source IP: $t[3]\n";
 		$f = "0";
 	}	
 	# Source Port
 	if ( $t[4] !~ /\d+/ ) {
 	  if ( $t[4] ne "???" ) {
-		print "\tInvalid source port: $t[4]\n";
+		print STDERR "\tInvalid source port: $t[4]\n";
 		$f = "0";
 	  }
 	}	
 	# Target IP
 	if ( $t[5] !~ /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/ ) {
-		print "\tInvalid target IP: $t[5]\n";
+		print STDERR "\tInvalid target IP: $t[5]\n";
 		$f = "0";
 	}	
 	# Target Port
 	if ( $t[6] !~ /\d+/ ) {
 	  if ( $t[6] ne "???" ) {
-		print "\tInvalid target port: $t[6]\n";
+		print STDERR "\tInvalid target port: $t[6]\n";
 		$f = "0";
 	  }
 	}
 	# Protocol
 	if ( $t[7] !~ /[0-9TCPIMPUD\?]{1,4}/ ) {
 	#if ( $t[7] !~ /[0-9TCPIMPUD\?]+/ ) {
-		print "\tInvalid Protocol: $t[7]\n";
+		print STDERR "\tInvalid Protocol: $t[7]\n";
 		$f = "0";
 	}	
 	# Flags (is optional)
 	if ($t[8]) {
 		if ( $t[8] !~ /[12UPFSAR]{1,8}/ ) {
-			print "\tInvalid Flags: $t[8]\n";
+			print STDERR "\tInvalid Flags: $t[8]\n";
 			$f = "0";
 		}
 	}
@@ -851,7 +855,7 @@ sub load_exclude {
 					# And apply the masks
 					$lo = unpack_ip( $packedip & $bitmaskc );
 					$hi = unpack_ip( $packedip | $bitmask );
-					#printf "%s %u %08x %08x %08x %s - %s\n", $ip, $maskbits, $packedip, $bitmask, $bitmaskc, $lo, $hi;					
+					#printf STDERR "%s %u %08x %08x %08x %s - %s\n", $ip, $maskbits, $packedip, $bitmask, $bitmaskc, $lo, $hi;					
 				} else {
 					# 127.0.0.0 - 127.255.255.255 format
 					($lo, $hi) = split("-");
@@ -873,9 +877,9 @@ sub load_exclude {
 						$i++;
 						$ar_lo->[$i] = padip($lo);
 						$ar_hi->[$i] = padip($hi);
-						#print "$i $lo - $hi\n";
+						#print STDERR "$i $lo - $hi\n";
 					} else {
-						print "WARNING: Bad IP address range [$lo - $hi] in $exclude\n";
+						print STDERR "WARNING: Bad IP address range [$lo - $hi] in $exclude\n";
 					}
 				} else {
 					# Make sure it is is a valid port number.
@@ -883,9 +887,9 @@ sub load_exclude {
 						$i++;
 						$ar_lo->[$i] = $lo;
 						$ar_hi->[$i] = $hi;
-						#print "$i $lo - $hi\n";
+						#print STDERR "$i $lo - $hi\n";
 					} else {
-						print "WARNING: Bad Port range [$lo - $hi] in $exclude\n";
+						print STDERR "WARNING: Bad Port range [$lo - $hi] in $exclude\n";
 					}
 				}
 			}
@@ -902,18 +906,18 @@ sub print_exclude {
     my $ar_hi = $_[1];
 	my $cnt = $#{$ar_lo};
 	if ( $cnt > 0 ) {
-		print "DEBUG: Using $cnt exclusions.\n";
+		print STDERR "DEBUG: Using $cnt exclusions.\n";
 	} else {
-		print "DEBUG: No exclusions.\n";
+		print STDERR "DEBUG: No exclusions.\n";
 	}
 	my ($i, $lo, $hi);
 
 	for ($i = 1; $i <= $cnt; $i++) {
 		$lo = $ar_lo->[$i];
 		$hi = $ar_hi->[$i];
-		print "DEBUG: $i  $lo - $hi\n"; 
-		#printf "(%u) 0x%08x %s - ", pack_ip($lo), pack_ip($lo), unpack_ip(pack_ip($lo));
-		#printf "(%u) 0x%08x %s\n", pack_ip($hi), pack_ip($hi), unpack_ip(pack_ip($hi));
+		print STDERR "DEBUG: $i  $lo - $hi\n"; 
+		#printf STDERR "(%u) 0x%08x %s - ", pack_ip($lo), pack_ip($lo), unpack_ip(pack_ip($lo));
+		#printf STDERR "(%u) 0x%08x %s\n", pack_ip($hi), pack_ip($hi), unpack_ip(pack_ip($hi));
 	}
 }
 
@@ -924,13 +928,13 @@ sub test_IP_exclude {
 	my $ip = $_[2];
 	my $cnt = $#{$ar_lo};
 	my $i;
-	#print "DEBUG: Searching $cnt exclusions\n"  if ( $debug eq "Y" );
+	#print STDERR "DEBUG: Searching $cnt exclusions\n"  if ( $debug eq "Y" );
 
 	#if ( $ip =~ /\?\?\?/ ) { return 0; }
 	# At this point $ip and the range are all padded.  (Or not, in the case of ports.)
 	for ($i = 1; $i <= $cnt; $i++) {
 		if ($ip ge $ar_lo->[$i] && $ip le $ar_hi->[$i] ) { 
-			print "DEBUG: $ip excluded because it is between $ar_lo->[$i] and $ar_hi->[$i]\n" if ( $debug eq "Y" );
+			print STDERR "DEBUG: $ip excluded because it is between $ar_lo->[$i] and $ar_hi->[$i]\n" if ( $debug eq "Y" );
 			return 1;
 		}
 	}
@@ -944,11 +948,11 @@ sub test_exclude {
 	my $ip = $_[2];
 	my $cnt = $#{$ar_lo};
 	my $i;
-	#print "DEBUG: Searching $cnt exclusions\n"  if ( $debug eq "Y" );
+	#print STDERR "DEBUG: Searching $cnt exclusions\n"  if ( $debug eq "Y" );
 	# At this point $ip and the range are all padded.  (Or not, in the case of ports.)
 	for ($i = 1; $i <= $cnt; $i++) {
 		if ($ip >= $ar_lo->[$i] && $ip <= $ar_hi->[$i] ) { 
-			print "DEBUG: $ip excluded because it is between $ar_lo->[$i] and $ar_hi->[$i]\n" if ( $debug eq "Y" );
+			print STDERR "DEBUG: $ip excluded because it is between $ar_lo->[$i] and $ar_hi->[$i]\n" if ( $debug eq "Y" );
 			return 1;
 		}
 	}
