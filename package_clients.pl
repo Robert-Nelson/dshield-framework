@@ -73,10 +73,6 @@ foreach $version (@sfiles) {
 		if ( $version eq "linksys" ) {
 			`/bin/cp -fp ./linksys.c $version`;
 		}		
-		if ( $version eq "pfsense" ) {
-			`/bin/cp -fp ./pfsense_mailer.php $version`;
-			`/bin/cp -fp ./pfsense_preprocessor.php $version`;
-		}		
 
 		# Create the sample test_wrapper.sh script
 		write_script();

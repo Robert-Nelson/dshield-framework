@@ -3,28 +3,33 @@
 # Patched for pfSense pf logs by Klaus Lichtenwalder
 # (http://lists.sans.org/pipermail/list/2008-August/027270.html)
 # Patched version submitted by Raman Gupta
-# Rewritten for pfSense version 2.2 ny Robert Nelson
+# Rewritten for pfSense version 2.2 by Robert Nelson
 #
-# Install the perl module p5-Net-IP.
+# Requires the perl module p5-Net-IP.
 #
 # Edit dshield.cnf as needed
 # 	- change the include/exclude files' paths from /etc/ to /usr/local/etc/
 # 	- set userid to your dshield submission id
 # 	- comment out the "log=/var/log/messages" line since stdin is used.
-#	- set sendmail=./pfsense_mailer.php
-#	- set whereto=MAILWRAPPER
+#	- set whereto=-
 #
 # Make the following changes to pfsense.pl
 # 	- Change the path to perl in the first line to /usr/local/bin/perl
 #
+# Run a command similar to the following
 #
-# clog /var/log/filter.log | ./pfsense_preprocessor.php | ./pfsense.pl -config=./dshield.cnf
+# clog /var/log/filter.log | pfsense_preprocessor.php | pfsense.pl -config=/usr/local/etc/dshield.cnf | pfsense_mailer.php
 #
 
 use Net::IP;
 
 # DShield Client Framework
 # Framework for parsing of the log line
+#
+# Expects the input in this format:
+#	Jul 11 06:32:13 block em0 TCP:FPA 192.168.1.1:48561 192.168.1.1:443
+# Field description:
+# 	Month Day HH:MM:SS Action Interface Protocol(:TCPFLAGS) SourceIP(:Port) DestinationIP(:Port)
 #
 # @rline - array to be returned holding the required values for Dshield
 #  $rline[0] - date in yyyy-mm-dd HH:MM:SS tz format

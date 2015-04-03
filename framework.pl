@@ -55,8 +55,9 @@ my $FRAMEWORK_VERSION = "2014-07-08";
 #              MAIL sends as mail to the address specified by the
 #              'to' variable. (default)
 #              Anything else is assumed to be a filename.  If it is a filename
-#              then the output will be written to this file.  It is up to you
-#              to do something with it.  (Wrapper script....)
+#              then the output will be written to this file.  The filename "-" 
+#              represents stdout.  It is up to you to do something with it.
+#              (Wrapper script....)
 #   -line_filter An optional regex that is passed to the parser.  If
 #                used, then each log line must match this regex.  (The parser
 #                has a default that should work for most common cases.)
@@ -531,32 +532,24 @@ if ( $rotate eq "N") {
 # if the temporary file is not empty, send the contents as and e-mail
 unless ( -z $tmpfile ) {
 	if ( $verbose eq "Y" ) {
-      if ( $whereto eq "MAIL" || $whereto eq "MAILWRAPPER") {
+      if ( $whereto eq "MAIL" ) {
 		print "SENDING USING: $sendmail\n";
 		print "SENDING TO/FROM: $to / $from\n";
 	  } else {
 		print "WRITING OUTPUT TO: $whereto\n";
       }
 	}
-	if ($whereto eq "MAILWRAPPER" ) {
-	    my $sendcmd = "| $sendmail -s \"FORMAT $format USERID $userid TZ $tz VERSION $VERSION\" -t $to";
-	    $sendcmd .= " -c $cc" if $cc;
-	    $sendcmd .= " -b $bcc" if $bcc;
-	    $sendcmd .= " -r $replyto" if $replyto;
-	    open (MAIL,$sendcmd) or die "Can't access $sendmail for sending the e-mail\n";
+	if ($whereto eq "MAIL" ) {
+	    open (MAIL,"| $sendmail") or die "Can't access $sendmail for sending the e-mail\n";
 	} else {
-		if ($whereto eq "MAIL" ) {
-			open (MAIL,"| $sendmail") or die "Can't access $sendmail for sending the e-mail\n";
-		} else {
-			open (MAIL,"> $whereto") or die "Can't open $whereto for writing the output file.\n";
-		}
-	    print MAIL "To: $to\n";
-	    print MAIL "Cc: $cc\n" if $cc;
-	    print MAIL "Bcc: $bcc\n" if $bcc;
-	    print MAIL "Reply-To: $replyto\n" if $replyto;
-	    print MAIL "From: $from\n";
-	    print MAIL "Subject: FORMAT $format USERID $userid TZ $tz VERSION $VERSION\n\n";
+	    open (MAIL,"> $whereto") or die "Can't open $whereto for writing the output file.\n";
 	}	    
+	print MAIL "To: $to\n";
+	print MAIL "Cc: $cc\n" if $cc;
+	print MAIL "Bcc: $bcc\n" if $bcc;
+	print MAIL "Reply-To: $replyto\n" if $replyto;
+	print MAIL "From: $from\n";
+	print MAIL "Subject: FORMAT $format USERID $userid TZ $tz VERSION $VERSION\n\n";
 	open (TMPFILE,"$tmpfile") || die ("Can't open temp file $tmpfile for reading\n");
 	foreach (<TMPFILE>) {
 		print MAIL $_;
