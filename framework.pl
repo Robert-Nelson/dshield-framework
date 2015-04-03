@@ -1,6 +1,6 @@
 # DShield Client Framework
 #
-my $FRAMEWORK_VERSION = "2014-07-08";
+my $FRAMEWORK_VERSION = "2015-04-03";
 
 # The idea of this framework is to establish a list of common
 # features and command line paramaters accross all clients.
